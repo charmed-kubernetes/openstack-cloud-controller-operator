@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+# Copyright 2022 Canonical Ltd.
+# See LICENSE file for licensing details.
+"""Update to a new upstream release."""
+import argparse
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+
+COMPONENTS = ("controller-manager", "cinder-csi-plugin")
+REPO = "https://github.com/kubernetes/cloud-provider-openstack"
+FILEDIR = Path(__file__).parent
+
+
+def main(args):
+    """Main update logic."""
+    ref_sha = resolve_ref(args.repo, args.ref)
+    fetch_manifests(args.repo, args.ref)
+    args.ref_file.write_text(ref_sha)
+    return ref_sha
+
+
+def resolve_ref(repo, ref):
+    """Resolve the remote ref."""
+    ref_sha = run("git", "ls-remote", repo, ref)
+    if not ref_sha:
+        raise UpdateError(f"Ref not found in upstream repo: {ref}")
+    return ref_sha
+
+
+def fetch_manifests(repo, ref):
+    """Fetch the manifests from the remote."""
+    with TemporaryDirectory() as tmpdir:
+        src = Path(tmpdir, "manifests")
+        dst = Path(FILEDIR, "manifests")
+        run("git", "clone", "--depth=1", "-b", ref, repo, tmpdir)
+        for component in COMPONENTS:
+            if (dst / component).exists():
+                shutil.rmtree(dst / component)
+            shutil.copytree(src / component, dst / component)
+
+
+def get_argparser():
+    """Build the argparse instance."""
+    parser = argparse.ArgumentParser(description="Update to a new upstream release.")
+    parser.add_argument("ref", help="the upstream branch, tag, or commit")
+    parser.add_argument("--repo", default=REPO, help="upstream repo to pull from")
+    parser.add_argument("--ref-file", type=Path, default=Path(FILEDIR, "ref.sha"),
+                        help="where to write the resolved ref info")
+    return parser
+
+
+def run(*cmd, check=True):
+    """Wrapper around subprocess.run."""
+    try:
+        proc = subprocess.run(cmd, capture_output=True, check=check)
+    except subprocess.CalledProcessError as e:
+        raise UpdateError(e.stderr.decode("utf8") or e.stdout.decode("utf8")) from e
+    return proc.stdout.decode("utf8")
+
+
+class UpdateError(Exception):
+    """Represents an error performing the update."""
+    pass
+
+
+if __name__ == "__main__":
+    try:
+        ref_sha = main(get_argparser().parse_args())
+        print(ref_sha.strip())
+    except UpdateError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
