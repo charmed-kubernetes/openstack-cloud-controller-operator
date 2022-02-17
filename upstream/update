@@ -10,37 +10,37 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 
-COMPONENTS = ("controller-manager", "cinder-csi-plugin")
+COMPONENTS = ["controller-manager"]
 REPO = "https://github.com/kubernetes/cloud-provider-openstack"
 FILEDIR = Path(__file__).parent
 
 
-def main(args):
+def main(tmpdir, repo, ref):
     """Main update logic."""
-    ref_sha = resolve_ref(args.repo, args.ref)
-    fetch_manifests(args.repo, args.ref)
-    args.ref_file.write_text(ref_sha)
-    return ref_sha
+    checkout_repo(tmpdir, repo, ref)
+    copy_manifests(tmpdir)
+    return get_version(tmpdir)
 
 
-def resolve_ref(repo, ref):
+def checkout_repo(tmpdir, repo, ref):
+    """Fetch the remote repo and switch to the given ref."""
+    run("git", "clone", repo, tmpdir)
+    run("git", "checkout", ref, cwd=tmpdir)
+
+
+def get_version(repo):
     """Resolve the remote ref."""
-    ref_sha = run("git", "ls-remote", repo, ref)
-    if not ref_sha:
-        raise UpdateError(f"Ref not found in upstream repo: {ref}")
-    return ref_sha
+    return run("git", "describe", "--tags", cwd=tmpdir).strip()
 
 
-def fetch_manifests(repo, ref):
-    """Fetch the manifests from the remote."""
-    with TemporaryDirectory() as tmpdir:
-        src = Path(tmpdir, "manifests")
-        dst = Path(FILEDIR, "manifests")
-        run("git", "clone", "--depth=1", "-b", ref, repo, tmpdir)
-        for component in COMPONENTS:
-            if (dst / component).exists():
-                shutil.rmtree(dst / component)
-            shutil.copytree(src / component, dst / component)
+def copy_manifests(tmpdir):
+    """Copy the manifests from the upstream repo into the charm."""
+    src = Path(tmpdir, "manifests")
+    dst = Path(FILEDIR, "manifests")
+    for component in COMPONENTS:
+        if (dst / component).exists():
+            shutil.rmtree(dst / component)
+        shutil.copytree(src / component, dst / component)
 
 
 def get_argparser():
@@ -48,15 +48,13 @@ def get_argparser():
     parser = argparse.ArgumentParser(description="Update to a new upstream release.")
     parser.add_argument("ref", help="the upstream branch, tag, or commit")
     parser.add_argument("--repo", default=REPO, help="upstream repo to pull from")
-    parser.add_argument("--ref-file", type=Path, default=Path(FILEDIR, "ref.sha"),
-                        help="where to write the resolved ref info")
     return parser
 
 
-def run(*cmd, check=True):
+def run(*cmd, check=True, **kwargs):
     """Wrapper around subprocess.run."""
     try:
-        proc = subprocess.run(cmd, capture_output=True, check=check)
+        proc = subprocess.run(cmd, capture_output=True, check=check, **kwargs)
     except subprocess.CalledProcessError as e:
         raise UpdateError(e.stderr.decode("utf8") or e.stdout.decode("utf8")) from e
     return proc.stdout.decode("utf8")
@@ -69,8 +67,11 @@ class UpdateError(Exception):
 
 if __name__ == "__main__":
     try:
-        ref_sha = main(get_argparser().parse_args())
-        print(ref_sha.strip())
+        args = get_argparser().parse_args()
+        with TemporaryDirectory() as tmpdir:
+            version = main(tmpdir, args.repo, args.ref)
+            Path(FILEDIR, "version").write_text(f"{version}\n")
+            print(version)
     except UpdateError as e:
         print(str(e), file=sys.stderr)
         sys.exit(1)

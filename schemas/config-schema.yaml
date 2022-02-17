@@ -1,0 +1,92 @@
+type: object
+properties:
+  Global:
+    type: object
+    anyOf:
+      - required:
+        - auth-url
+        - region
+        - username
+        - password
+        - domain-id
+        - tenant-domain-id
+        - tenant-id
+      - required:
+        - auth-url
+        - region
+        - username
+        - password
+        - domain-name
+        - tenant-domain-name
+        - tenant-name
+      - required:
+        - auth-url
+        - region
+        - application-credential-id
+        - application-credential-secret
+    properties:
+        auth-url:
+          type: string
+        region:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+        domain-name:
+          type: string
+        domain-id:
+          type: string
+        tenant-domain-name:
+          type: string
+        tenant-domain-id:
+          type: string
+        tenant-name:
+          type: string
+        tenant-id:
+          type: string
+        application-credential-id:
+          type: string
+        application-credential-secret:
+          type: string
+  LoadBalancer:
+    type: object
+    properties:
+      enabled:
+        type: boolean
+      floating-network-id:
+        type: string
+      floating-subnet-id:
+        type: string
+      floating-subnet:
+        type: string
+      floating-subnet-tags:
+        type: string
+      lb-method:
+        type: string
+      lb-provider:
+        type: string
+      subnet-id:
+        type: string
+      network-id:
+        type: string
+      create-monitor:
+        type: boolean
+      monitor-delay:
+        type: integer
+      monitor-max-retries:
+        type: integer
+      monitor-timeout:
+        type: integer
+      internal-lb:
+        type: boolean
+      cascade-delete:
+        type: boolean
+      flavor-id:
+        type: string
+      availability-zone:
+        type: string
+      default-tls-container-ref:
+        type: string
+      max-shared-lb:
+        type: integer
