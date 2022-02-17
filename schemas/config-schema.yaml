@@ -1,3 +1,6 @@
+# This is the schema for validating the data used in rendering the
+# `cloud-config` secret. In particular, it ensures that we have at
+# least one complete set of auth data available.
 type: object
 properties:
   Global:
