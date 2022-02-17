@@ -6,6 +6,7 @@
 import json
 import logging
 from hashlib import md5
+from pathlib import Path
 
 from charms.openstack_cloud_controller_operator.v0.cloud_config import (
     CloudConfigProvides,
@@ -27,6 +28,7 @@ class OpenStackCloudControllerCharm(CharmBase):
     """Dispatch logic for the OCC operator charm."""
 
     stored = StoredState()
+    version = Path("upstream/version").read_text()
 
     def __init__(self, *args):
         super().__init__(*args)
@@ -44,6 +46,7 @@ class OpenStackCloudControllerCharm(CharmBase):
         self.framework.observe(self.on.install, self._install_or_upgrade)
         self.framework.observe(self.on.upgrade_charm, self._install_or_upgrade)
         self.framework.observe(self.cc_provides.on.available, self._notify_cloud_config)
+        self.framework.observe(self.on.leader_elected, self._set_version)
         self.framework.observe(self.on.stop, self._cleanup)
 
     def _check_config(self, event=None):
@@ -88,7 +91,12 @@ class OpenStackCloudControllerCharm(CharmBase):
         self.backend.apply()
         self.stored.deployed = True
         self.unit.status = ActiveStatus()
+        self._set_version()
         self._notify_cloud_config(event)
+
+    def _set_version(self, event=None):
+        if self.unit.is_leader():
+            self.unit.set_workload_version(self.version)
 
     def _notify_cloud_config(self, event=None):
         if not self.unit.is_leader():
