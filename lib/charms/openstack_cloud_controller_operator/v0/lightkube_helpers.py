@@ -73,9 +73,9 @@ class LightKubeHelpers:
                 ignore_unauthorized=ignore_unauthorized,
             )
 
-    def apply_resource(self, resource_type, name, namespace=None, **kwargs):
+    def apply_resource(self, resource_type, name, namespace=None, annotations=None, **kwargs):
         """Create or update a resource."""
-        obj = resource_type(metadata=ObjectMeta(name=name), **kwargs)
+        obj = resource_type(metadata=ObjectMeta(name=name, annotations=annotations), **kwargs)
         self.client.apply(obj, namespace=namespace)
 
     def delete_resource(
