@@ -52,4 +52,5 @@ The base image for this operator can be provided with `--resource base-image=ubu
 
 Please see the [Juju SDK docs](https://juju.is/docs/sdk) for guidelines
 on enhancements to this charm following best practice guidelines, and
-`CONTRIBUTING.md` for developer guidance.
+[CONTRIBUTING.md](https://github.com/canonical/openstack-cloud-controller-operator/blob/main/CONTRIBUTING.md)
+for developer guidance.
