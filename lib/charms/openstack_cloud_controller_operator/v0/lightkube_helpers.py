@@ -1,6 +1,7 @@
 # Copyright 2022 Canonical Ltd.
 # See LICENSE file for licensing details.
 """Helpers to make working with lightkube a little easier."""
+import logging
 from pathlib import Path
 
 import yaml
@@ -17,6 +18,9 @@ LIBAPI = 0
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
 LIBPATCH = 1
+
+
+log = logging.getLogger(__name__)
 
 
 class LightKubeHelpers:
@@ -90,15 +94,15 @@ class LightKubeHelpers:
         try:
             self.client.delete(resource_type, name, namespace=namespace)
         except ApiError as err:
-            self.log.exception("ApiError encountered while attempting to delete resource.")
+            log.exception("ApiError encountered while attempting to delete resource.")
             if err.status.message is not None:
                 if "not found" in err.status.message and ignore_not_found:
-                    self.log.error(f"Ignoring not found error:\n{err.status.message}")
+                    log.error(f"Ignoring not found error:\n{err.status.message}")
                 elif "(Unauthorized)" in err.status.message and ignore_unauthorized:
                     # Ignore error from https://bugs.launchpad.net/juju/+bug/1941655
-                    self.log.error(f"Ignoring unauthorized error:\n{err.status.message}")
+                    log.error(f"Ignoring unauthorized error:\n{err.status.message}")
                 else:
-                    self.log.error(err.status.message)
+                    log.error(err.status.message)
                     raise
             else:
                 raise
