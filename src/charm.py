@@ -99,7 +99,7 @@ class OpenStackCloudControllerCharm(CharmBase):
             self.unit.set_workload_version(self.version)
 
     def _notify_cloud_config(self, event=None):
-        if not self.unit.is_leader():
+        if not self.unit.is_leader() or self.stored.config_hash is None:
             return
         if event:
             relations = [event.relation]
