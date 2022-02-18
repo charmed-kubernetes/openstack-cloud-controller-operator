@@ -129,6 +129,8 @@ class OCCCharmBackend(Object):
             Secret,
             name="cloud-config",
             namespace="kube-system",
+            kind="Secret",
+            apiVersion="v1",
             data={"cloud.conf": base64.encodebytes(cloud_conf).decode("utf8")},
         )
 
