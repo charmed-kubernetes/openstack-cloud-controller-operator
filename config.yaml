@@ -181,20 +181,20 @@ options:
     description: >-
       The time, in seconds, between sending probes to members of the load
       balancer. Defaults to `5`
-    type: integer
+    type: int
 
   monitor-max-retries:
     description: >-
       The number of successful checks before changing the operating status of
       the load balancer member to ONLINE. A valid value is from `1` to `10`.
       Defaults to `1`.
-    type: integer
+    type: int
 
   monitor-timeout:
     description: >-
       The maximum time, in seconds, that a monitor waits to connect backend
       before it times out. Defaults to `3`.
-    type: integer
+    type: int
 
   internal-lb:
     description: >-
@@ -234,4 +234,4 @@ options:
   max-shared-lb:
     description: >-
       The maximum number of `Services` that share a load balancer. Defaults to `2`.
-    type: integer
+    type: int

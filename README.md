@@ -12,6 +12,7 @@ can be provided either directly, via config, or via the `openstack-integration`
 relation to the [OpenStack Integrator charm](https://charmhub.io/openstack-integrator).
 
 ```
+juju offer cluster-model.openstack-integrator:clients
 juju consume cluster-model.openstack-integrator
 juju deploy openstack-cloud-controller-operator
 juju relate openstack-cloud-controller-operator openstack-integrator
