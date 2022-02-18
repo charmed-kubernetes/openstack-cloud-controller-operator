@@ -129,7 +129,7 @@ class OCCCharmBackend(Object):
             Secret,
             name="cloud-config",
             namespace="kube-system",
-            data={"cloud.conf": base64.encodebytes(cloud_conf)},
+            data={"cloud.conf": base64.encodebytes(cloud_conf).decode("utf8")},
         )
 
     def delete_cloud_config(self):
