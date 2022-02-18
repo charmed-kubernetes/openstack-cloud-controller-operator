@@ -47,7 +47,7 @@ connection information provided to this charm.
 
 ## OCI Images
 
-The base image for this operator can be provided with `--resource base-image=ubuntu:focal`.
+The base image for this operator can be provided with `--resource operator-base=ubuntu:focal`.
 
 ## Contributing
 

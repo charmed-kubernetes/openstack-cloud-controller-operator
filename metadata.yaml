@@ -26,5 +26,5 @@ containers:
 resources:
   operator-base:
     type: oci-image
-    description: 'Base image for the operator to run on.'
+    description: Base image for the operator to run with (ubuntu:focal)
     upstream-source: ubuntu:focal

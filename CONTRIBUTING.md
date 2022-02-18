@@ -55,7 +55,7 @@ juju add-model dev
 juju model-config logging-config="<root>=INFO;unit=DEBUG"
 # Deploy the charm
 juju deploy ./openstack-cloud-controller-operator_ubuntu-20.04-amd64.charm \
-    --resource base-image=ubuntu:focal \
+    --resource operator-base=ubuntu:focal \
 ```
 
 ## Canonical Contributor Agreement
