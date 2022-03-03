@@ -1,25 +1,30 @@
-# Copyright 2021 Canonical Ltd.
+# Copyright 2022 Canonical, Ltd.
 # See LICENSE file for licensing details.
+name: openstack-cloud-controller-operator
+display-name: OpenStack Cloud Controller Operator
+summary: Runs the OpenStack Cloud Controller in the cluster.
+description: >-
+  The OpenStack cloud provider provides the Kubernetes cluster access to
+  native resources from OpenStack, such as storage and load balancers.
+  This operator includes the core Cloud Controller component.
 
-# For a complete list of supported options, see:
-# https://discourse.charmhub.io/t/charm-metadata-v2/3674/15
-name: operator-template
-display-name: |
-  TEMPLATE-TODO: fill out a display name for the Charmcraft store
-description: |
-  TEMPLATE-TODO: fill out the charm's description
-summary: |
-  TEMPLATE-TODO: fill out the charm's summary
+provides:
+  external-cloud-provider:
+    interface: external_cloud_provider
+    limit: 1
+  cloud-config:
+    interface: cloud_config
+requires:
+  openstack-integration:
+    interface: openstack-integration
+    limit: 1
 
-# TEMPLATE-TODO: replace with containers for your workload (delete for non-k8s)
 containers:
-  httpbin:
-    resource: httpbin-image
+  operator-base:
+    resource: operator-base
 
-# TEMPLATE-TODO: each container defined above must specify an oci-image resource
 resources:
-  httpbin-image:
+  operator-base:
     type: oci-image
-    description: OCI image for httpbin (kennethreitz/httpbin)
-    # Included for simplicity in integration tests
-    upstream-source: kennethreitz/httpbin
+    description: Base image for the operator to run with (ubuntu:focal)
+    upstream-source: ubuntu:focal

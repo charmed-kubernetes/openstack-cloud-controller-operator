@@ -1,67 +1,83 @@
-# Copyright 2021 Canonical Ltd.
+# Copyright 2022 Canonical Ltd.
 # See LICENSE file for licensing details.
 #
 # Learn more about testing at: https://juju.is/docs/sdk/testing
 
-import unittest
+import json
 from unittest.mock import Mock
 
-from ops.model import ActiveStatus
+import pytest
+from charms.openstack_cloud_controller_operator.v0.cloud_config import (
+    MockCloudConfigRequires,
+)
+from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 from ops.testing import Harness
 
-from charm import OperatorTemplateCharm
+from charm import OpenStackCloudControllerCharm
 
 
-class TestCharm(unittest.TestCase):
-    def setUp(self):
-        self.harness = Harness(OperatorTemplateCharm)
-        self.addCleanup(self.harness.cleanup)
-        self.harness.begin()
+@pytest.fixture
+def harness():
+    harness = Harness(OpenStackCloudControllerCharm)
+    try:
+        yield harness
+    finally:
+        harness.cleanup()
 
-    def test_config_changed(self):
-        self.assertEqual(list(self.harness.charm._stored.things), [])
-        self.harness.update_config({"thing": "foo"})
-        self.assertEqual(list(self.harness.charm._stored.things), ["foo"])
 
-    def test_action(self):
-        # the harness doesn't (yet!) help much with actions themselves
-        action_event = Mock(params={"fail": ""})
-        self.harness.charm._on_fortune_action(action_event)
+@pytest.fixture
+def lk_client(monkeypatch):
+    monkeypatch.setattr(
+        "charms.openstack_cloud_controller_operator.v0.lightkube_helpers.Client",
+        client := Mock(name="lightkube.Client"),
+    )
+    return client
 
-        self.assertTrue(action_event.set_results.called)
 
-    def test_action_fail(self):
-        action_event = Mock(params={"fail": "fail this"})
-        self.harness.charm._on_fortune_action(action_event)
+def test_ccm(harness, lk_client):
+    harness.set_leader(True)
+    harness.begin_with_initial_hooks()
+    assert isinstance(harness.charm.unit.status, BlockedStatus)
 
-        self.assertEqual(action_event.fail.call_args, [("fail this",)])
+    # Remove caching from properties (happens automatically for the
+    # cloud-config relation provider).
+    rel_cls = type(harness.charm.integrator)
+    del harness.charm.integrator.relation
+    rel_cls.relation = property(rel_cls.relation.func)
+    del harness.charm.integrator._data
+    rel_cls._data = property(rel_cls._data.func)
 
-    def test_httpbin_pebble_ready(self):
-        # Check the initial Pebble plan is empty
-        initial_plan = self.harness.get_container_pebble_plan("httpbin")
-        self.assertEqual(initial_plan.to_yaml(), "{}\n")
-        # Expected plan after Pebble ready with default config
-        expected_plan = {
-            "services": {
-                "httpbin": {
-                    "override": "replace",
-                    "summary": "httpbin",
-                    "command": "gunicorn -b 0.0.0.0:80 httpbin:app -k gevent",
-                    "startup": "enabled",
-                    "environment": {"thing": "🎁"},
-                }
-            },
+    rel_id = harness.add_relation("openstack-integration", "integrator")
+    assert isinstance(harness.charm.unit.status, WaitingStatus)
+    harness.add_relation_unit(rel_id, "integrator/0")
+    assert isinstance(harness.charm.unit.status, WaitingStatus)
+    harness.update_relation_data(
+        rel_id,
+        "integrator/0",
+        {
+            "auth_url": json.dumps("auth_url"),
+            "region": json.dumps("region"),
+            "username": json.dumps("username"),
+            "password": json.dumps("password"),
+            "user_domain_name": json.dumps("user_domain_name"),
+            "project_domain_name": json.dumps("project_domain_name"),
+            "project_name": json.dumps("project_name"),
+        },
+    )
+    assert isinstance(harness.charm.unit.status, ActiveStatus)
+    harness.remove_relation(rel_id)
+    assert isinstance(harness.charm.unit.status, BlockedStatus)
+
+    lk_client().list.return_value = [Mock(**{"metadata.annotations": {}})]
+    harness.update_config(
+        {
+            "auth-url": "http://example.com/v3",
+            "region": "east",
+            "application-credential-id": "cred-id",
+            "application-credential-secret": "cred-secret",
         }
-        # Get the httpbin container from the model
-        container = self.harness.model.unit.get_container("httpbin")
-        # Emit the PebbleReadyEvent carrying the httpbin container
-        self.harness.charm.on.httpbin_pebble_ready.emit(container)
-        # Get the plan now we've run PebbleReady
-        updated_plan = self.harness.get_container_pebble_plan("httpbin").to_dict()
-        # Check we've got the plan we expected
-        self.assertEqual(expected_plan, updated_plan)
-        # Check the service was started
-        service = self.harness.model.unit.get_container("httpbin").get_service("httpbin")
-        self.assertTrue(service.is_running())
-        # Ensure we set an ActiveStatus with no message
-        self.assertEqual(self.harness.model.unit.status, ActiveStatus())
+    )
+    assert isinstance(harness.charm.unit.status, ActiveStatus)
+    cc_requires = MockCloudConfigRequires(harness)
+    cc_requires.relate()
+    assert cc_requires.config_hash

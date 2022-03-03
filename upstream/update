@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+# Copyright 2022 Canonical Ltd.
+# See LICENSE file for licensing details.
+"""Update to a new upstream release."""
+import argparse
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+
+COMPONENTS = ["controller-manager"]
+REPO = "https://github.com/kubernetes/cloud-provider-openstack"
+FILEDIR = Path(__file__).parent
+
+
+def main(tmpdir, repo, ref):
+    """Main update logic."""
+    checkout_repo(tmpdir, repo, ref)
+    copy_manifests(tmpdir)
+    return get_version(tmpdir)
+
+
+def checkout_repo(tmpdir, repo, ref):
+    """Fetch the remote repo and switch to the given ref."""
+    run("git", "clone", repo, tmpdir)
+    run("git", "checkout", ref, cwd=tmpdir)
+
+
+def get_version(repo):
+    """Resolve the remote ref."""
+    return run("git", "describe", "--tags", cwd=tmpdir).strip()
+
+
+def copy_manifests(tmpdir):
+    """Copy the manifests from the upstream repo into the charm."""
+    src = Path(tmpdir, "manifests")
+    dst = Path(FILEDIR, "manifests")
+    for component in COMPONENTS:
+        if (dst / component).exists():
+            shutil.rmtree(dst / component)
+        shutil.copytree(src / component, dst / component)
+
+
+def get_argparser():
+    """Build the argparse instance."""
+    parser = argparse.ArgumentParser(description="Update to a new upstream release.")
+    parser.add_argument("ref", help="the upstream branch, tag, or commit")
+    parser.add_argument("--repo", default=REPO, help="upstream repo to pull from")
+    return parser
+
+
+def run(*cmd, check=True, **kwargs):
+    """Wrapper around subprocess.run."""
+    try:
+        proc = subprocess.run(cmd, capture_output=True, check=check, **kwargs)
+    except subprocess.CalledProcessError as e:
+        raise UpdateError(e.stderr.decode("utf8") or e.stdout.decode("utf8")) from e
+    return proc.stdout.decode("utf8")
+
+
+class UpdateError(Exception):
+    """Represents an error performing the update."""
+    pass
+
+
+if __name__ == "__main__":
+    try:
+        args = get_argparser().parse_args()
+        with TemporaryDirectory() as tmpdir:
+            version = main(tmpdir, args.repo, args.ref)
+            Path(FILEDIR, "version").write_text(f"{version}\n")
+            print(version)
+    except UpdateError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
