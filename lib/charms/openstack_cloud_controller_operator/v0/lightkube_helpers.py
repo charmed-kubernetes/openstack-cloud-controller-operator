@@ -69,7 +69,7 @@ class LightKubeHelpers:
             manifest = manifest.read_text()
         manifest = self._fix_generic_list(manifest)
         for obj in codecs.load_all_yaml(manifest):
-            self.delete_object(
+            self.delete_resource(
                 type(obj),
                 obj.metadata.name,
                 namespace=namespace,
