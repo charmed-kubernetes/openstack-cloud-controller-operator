@@ -51,6 +51,7 @@ class OpenStackIntegrationRequires(Object):
             "trust_device_path": {"type": "string"},
             "ignore_volume_az": {"type": "boolean"},
             "has_octavia": {"type": "boolean"},
+            "lb_enabled": {"type": "boolean"},
         },
     }
     IGNORE_FIELDS = {
@@ -173,3 +174,8 @@ class OpenStackIntegrationRequires(Object):
     def has_octavia(self):
         """The has_octavia value."""
         return self._value("has_octavia")
+
+    @property
+    def lb_enabled(self):
+        """The lb_enabled value."""
+        return self._value("lb_enabled")

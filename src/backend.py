@@ -91,13 +91,25 @@ class OCCCharmBackend(Object):
                 "domain-name": self.integrator.user_domain_name,
                 "tenant-domain-name": self.integrator.project_domain_name,
                 "tenant-name": self.integrator.project_name,
-                "subnet-id": self.integrator.subnet_id,
+                # Charm config overrides relation data.
+                **{
+                    k: self.config[k]
+                    for k in section_fields["Global"]
+                    if self.config.get(k) is not None
+                },
+            },
+            "LoadBalancer": {
+                "enabled": self.integrator.lb_enabled,
                 "floating-network-id": self.integrator.floating_network_id,
                 "lb-method": self.integrator.lb_method,
+                "subnet-id": self.integrator.subnet_id,
                 # Charm config overrides relation data.
-                **{k: self.config[k] for k in section_fields["Global"] if self.config.get(k)},
+                **{
+                    k: self.config.get(k)
+                    for k in section_fields["LoadBalancer"]
+                    if self.config.get(k) is not None
+                },
             },
-            "LoadBalancer": {k: self.config.get(k) for k in section_fields["LoadBalancer"]},
         }
         # Clear out empty / null values.
         for section in cloud_config.values():
