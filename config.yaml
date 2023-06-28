@@ -1,237 +1,33 @@
 options:
-  # Global options
-  auth-url:
-    description: >-
-      Required if not related to the OpenStack Integrator. Keystone service
-      URL, e.g. `http://128.110.154.166/identity`
+  image-registry:
     type: string
+    description: |
+      Source registry of Cloud Controller images.
 
-  os-endpoint-type:
-    description: >-
-      Specify which type of endpoint to use from the service catalog.  If not
-      set, public endpoints are used.
+      By setting to a value, each image listed in the releases manifest
+      has its image-registry replaced.
+
+      If unset, the manifests will use the image registry from the kube-control relation
+
+      example)
+        juju config openstack-cloud-controller image-registry='rocks.canonical.com:443/cdk'
+        juju config openstack-cloud-controller --reset image-registry
+
+  manager-release:
     type: string
+    description: |
+      Specify the version of controller-manager-release as defined by the `release`
+      tags of https://github.com/kubernetes/cloud-provider-openstack
 
-  ca-cert:
-    description: >-
-      CA certificate contents for communication with Keystone service. This is
-      required when using the https protocol in the Keystone service URL.
-    type: string
+      example)
+        juju config openstack-cloud-controller manager-release='v1.7.3'
+      
+      A list of supported versions is available through the action:
+        juju run-action openstack-cloud-controller/leader list-releases --wait
+      
+      To reset by to the latest supported by the charm use:
+        juju config openstack-cloud-controller --reset manager-release
+      
+      The current release deployed is available by viewing
+        juju status openstack-cloud-controller
 
-  client-cert:
-    description: >-
-      Client certificate contents used for the client TLS authentication.
-    type: string
-
-  client-key:
-    description: >-
-      Client private key contents used for the client TLS authentication.
-    type: string
-
-  username:
-    description: >-
-      Keystone user name. If you are using Keystone application credential,
-      this option is not required.
-    type: string
-
-  password:
-    description: >-
-      Keystone user password. If you are using Keystone application credential,
-      this option is not required.
-    type: string
-
-  region:
-    description: >-
-      Required. Keystone region name.
-    type: string
-
-  domain-id:
-    description: >-
-      Keystone user domain ID. If you are using a Keystone application
-      credential, this option is not required.
-    type: string
-
-  tenant-id:
-    description: >-
-      Keystone project ID. When using Keystone V3 - which changed the
-      identifier tenant to project - the `tenant-id` value is automatically
-      mapped to the project construct in the API. `tenant-id` is not needed
-      when using `trust-id` or Keystone application credential
-    type: string
-
-  tenant-domain-id:
-    description: >-
-      Keystone project domain ID.
-    type: string
-
-  user-domain-id:
-    description: >-
-      Keystone user domain ID.
-    type: string
-
-  trust-id:
-    description: >-
-      Keystone trust ID. A trust represents a user's (the trustor)
-      authorization to delegate roles to another user (the trustee), and
-      optionally allow the trustee to impersonate the trustor. Available trusts
-      are found under the `/v3/OS-TRUST/trusts` endpoint of the Keystone API.
-    type: string
-
-  trustee-id:
-    description: >-
-      Keystone trustee user ID.
-    type: string
-
-  trustee-password:
-    description: >-
-      Keystone trustee user password.
-    type: string
-
-  application-credential-id:
-    description: >-
-      The ID of an application credential to authenticate with. An
-      `application-credential-secret` has to be set along with this parameter.
-    type: string
-
-  application-credential-secret:
-    description: >-
-      The secret of an application credential to authenticate with.
-    type: string
-
-  tls-insecure:
-    description: >-
-      If set to `true`, then the server’s certificate will not be verified.
-      Defaults to `false`.
-    type: string
-
-  # LoadBalancer options
-  enabled:
-    description: >-
-      Whether or not to enable the `LoadBalancer` type of `Services`
-      integration at all. Defaults to `true`.
-    type: boolean
-
-  floating-network-id:
-    description: >-
-      The external network used to create floating IP for the load balancer
-      VIP. If there are multiple external networks in the cloud, either this
-      option must be set or user must specify
-      `loadbalancer.openstack.org/floating-network-id` in the Service
-      annotation.
-    type: string
-
-  floating-subnet-id:
-    description: >-
-      The external network subnet used to create floating IP for the load
-      balancer VIP. Can be overridden by the Service annotation
-      `loadbalancer.openstack.org/floating-subnet-id`.
-    type: string
-
-  floating-subnet:
-    description: >-
-      A name pattern (glob or regexp if starting with `~`) for the external
-      network subnet used to create floating IP for the load balancer VIP. Can
-      be overridden by the Service annotation
-      `loadbalancer.openstack.org/floating-subnet`. If multiple subnets match,
-      the first one with still available IPs is used.
-    type: string
-
-  floating-subnet-tags:
-    description: >-
-      Tags for the external network subnet used to create floating IP for the
-      load balancer VIP. Can be overridden by the `Service` annotation
-      `loadbalancer.openstack.org/floating-subnet-tags`. If multiple subnets
-      match, the first one with still available IPs is used.
-    type: string
-
-  lb-method:
-    description: >-
-      The load balancing algorithm used to create the load balancer pool. The
-      value can be `ROUND_ROBIN`, `LEAST_CONNECTIONS`, or `SOURCE_IP`. Defaults
-      to `ROUND_ROBIN`.
-    type: string
-
-  lb-provider:
-    description: >-
-      Used to specify the provider of the load balancer, e.g. "amphora" or
-      "octavia". Only "amphora" or "octavia" provider are officially tested,
-      other provider will cause a warning log.
-    type: string
-
-  subnet-id:
-    description: >-
-      ID of the Neutron subnet on which to create load balancer VIP, this ID is
-      also used to create pool members.
-    type: string
-
-  network-id:
-    description: >-
-      ID of the Neutron network on which to create load balancer VIP, not
-      needed if `subnet-id` is set.
-    type: string
-
-  create-monitor:
-    description: >-
-      Indicates whether or not to create a health monitor for the service load
-      balancer. A health monitor required for services that declare
-      `externalTrafficPolicy: Local`. Defaults to `false`.
-    type: boolean
-
-  monitor-delay:
-    description: >-
-      The time, in seconds, between sending probes to members of the load
-      balancer. Defaults to `5`
-    type: int
-
-  monitor-max-retries:
-    description: >-
-      The number of successful checks before changing the operating status of
-      the load balancer member to ONLINE. A valid value is from `1` to `10`.
-      Defaults to `1`.
-    type: int
-
-  monitor-timeout:
-    description: >-
-      The maximum time, in seconds, that a monitor waits to connect backend
-      before it times out. Defaults to `3`.
-    type: int
-
-  internal-lb:
-    description: >-
-      Determines whether or not to create an internal load balancer (no
-      floating IP) by default. Defaults to `false`.
-    type: boolean
-
-  cascade-delete:
-    description: >-
-      Determines whether or not to perform cascade deletion of load balancers.
-      Defaults to `true`.
-    type: boolean
-
-  flavor-id:
-    description: >-
-      The id of the loadbalancer flavor to use. Uses octavia default if not set.
-    type: string
-
-  availability-zone:
-    description: >-
-      The name of the loadbalancer availability zone to use. This requires
-      Octavia API version 2.14 or later (Ussuri release). The Octavia
-      availability zone capabilities will not be used if it is not set. The
-      parameter will be ignored if the Octavia version doesn't support
-      availability zones yet.
-    type: string
-
-  default-tls-container-ref:
-    description: >-
-      Reference to a TLS container. When this option is set then the cloud
-      provider will create an Octavia Listener of type `TERMINATED_HTTPS` for a
-      TLS Terminated load balancer.
-
-      The valiue should be of the form `https://{keymanager_host}/v1/containers/{uuid}`
-    type: string
-
-  max-shared-lb:
-    description: >-
-      The maximum number of `Services` that share a load balancer. Defaults to `2`.
-    type: int

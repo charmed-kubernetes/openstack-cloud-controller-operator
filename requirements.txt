@@ -1,3 +1,6 @@
-ops>=1.3.0,<2.0.0
 lightkube>=0.10.1,<1.0.0
-serialized-data-interface>=0.4.0,<1.0.0
+ops>=1.3.0,<2.0.0
+ops.manifest>=1.1.3,<2.0.0
+pydantic
+git+https://github.com/charmed-kubernetes/interface-kube-control.git@6dd289d1c795fdeda1bed17873b8d6562227c829#subdirectory=ops
+git+https://github.com/juju-solutions/interface-openstack-integration.git@0f81bb414ad8676ab889bbba24a34cffd12ce2ca#subdirectory=ops

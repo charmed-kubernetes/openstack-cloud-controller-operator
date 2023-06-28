@@ -1,18 +1,20 @@
 # Upstream Manifests
 
-This directory contains local copies of the upstream manifests from the release
-commit supported by this charm to be used by the charm for deployment. These
+This directory contains local copies of the upstream manifests from multiple releases
+supported by this charm to be used by the charm for deployment. These
 files should not be modified locally.
 
 ## Updating
 
-To update these, simply run the update script, passing in the release branch,
-tag, or commit to update to:
+To update these, simply run the update script
 
 ```bash
-./upstream/update.sh release-1.23
+tox -e update -- --registry ${upload-registry} ${namespacing-path} ${user} ~/.upload-password
 ```
+This will overwrite the existing manifests for the supported components
+This will also synchronize the images to a provided oci-registry
 
-This will overwrite the existing manifests for the supported components, update
-the list of image resources in `metadata.yaml`, and, finally, update the
-`ref.sha` file with the resolved ref information for the new version.
+example) uploading to rocks
+    ```
+    --registry upload.rocks.canonical.com:5000 staging/cdk admin ~/.upload-password
+    ```

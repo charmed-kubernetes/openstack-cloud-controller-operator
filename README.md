@@ -45,10 +45,6 @@ Cinder CSI Operator. This relation allows the other charms to be informed
 when the `cloud-config` secret is created or updated based on the auth and
 connection information provided to this charm.
 
-## OCI Images
-
-The base image for this operator can be provided with `--resource operator-base=ubuntu:focal`.
-
 ## Contributing
 
 Please see the [Juju SDK docs](https://juju.is/docs/sdk) for guidelines
