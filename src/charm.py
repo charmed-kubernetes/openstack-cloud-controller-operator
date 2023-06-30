@@ -4,6 +4,7 @@
 """Deploy and manage the Controller-Manager for K8s on OpenStack."""
 
 import logging
+import os
 from pathlib import Path
 
 from ops.charm import CharmBase
@@ -24,12 +25,13 @@ log = logging.getLogger(__name__)
 class ProviderCharm(CharmBase):
     """Deploy and manage the Cloud Controller Manager for K8s on OpenStack."""
 
-    CA_CERT_PATH = Path("/srv/kubernetes/ca.crt")
-
     stored = StoredState()
 
     def __init__(self, *args):
         super().__init__(*args)
+
+        # Ensure kubeconfig environment
+        self._kubeconfig_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Relation Validator and datastore
         self.kube_control = KubeControlRequirer(self)
@@ -38,7 +40,6 @@ class ProviderCharm(CharmBase):
         # Config Validator and datastore
         self.charm_config = CharmConfig(self)
 
-        self.CA_CERT_PATH.parent.mkdir(exist_ok=True)
         self.stored.set_default(
             config_hash=None,  # hashed value of the config once valid
             deployed=False,  # True if the config has been applied after new hash
@@ -74,6 +75,16 @@ class ProviderCharm(CharmBase):
         self.framework.observe(self.on.upgrade_charm, self._install_or_upgrade)
         self.framework.observe(self.on.config_changed, self._merge_config)
         self.framework.observe(self.on.stop, self._cleanup)
+
+    @property
+    def _ca_cert_path(self) -> Path:
+        return Path(f"/srv/{self.unit.name}/ca.crt")
+
+    @property
+    def _kubeconfig_path(self) -> Path:
+        path = f"/srv/{self.unit.name}/kubeconfig"
+        os.environ["KUBECONFIG"] = path
+        return Path(path)
 
     def _list_versions(self, event):
         self.collector.list_versions(event)
@@ -137,10 +148,7 @@ class ProviderCharm(CharmBase):
             self.unit.status = WaitingStatus("Waiting for kube-control: unit credentials")
             return False
         self.kube_control.create_kubeconfig(
-            self.CA_CERT_PATH, "/root/.kube/config", "root", self.unit.name
-        )
-        self.kube_control.create_kubeconfig(
-            self.CA_CERT_PATH, "/home/ubuntu/.kube/config", "ubuntu", self.unit.name
+            self._ca_cert_path, self._kubeconfig_path, "root", self.unit.name
         )
         return True
 
@@ -153,7 +161,7 @@ class ProviderCharm(CharmBase):
             else:
                 self.unit.status = BlockedStatus(evaluation)
             return False
-        self.CA_CERT_PATH.write_text(self.certificates.ca)
+        self._ca_cert_path.write_text(self.certificates.ca)
         return True
 
     def _check_config(self):
@@ -219,6 +227,7 @@ class ProviderCharm(CharmBase):
                     event.defer()
                     return
         self.unit.status = MaintenanceStatus("Shutting down")
+        self._kubeconfig_path.parent.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

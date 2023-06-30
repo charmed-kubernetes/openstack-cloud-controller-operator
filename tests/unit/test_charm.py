@@ -24,9 +24,20 @@ def harness():
 
 
 @pytest.fixture(autouse=True)
+def mock_kubeconfig(tmpdir):
+    kubeconfig = Path(tmpdir) / "kubeconfig"
+    with mock.patch.object(
+        ProviderCharm, "_kubeconfig_path", new_callable=mock.PropertyMock(return_value=kubeconfig)
+    ):
+        yield kubeconfig
+
+
+@pytest.fixture(autouse=True)
 def mock_ca_cert(tmpdir):
     ca_cert = Path(tmpdir) / "ca.crt"
-    with mock.patch.object(ProviderCharm, "CA_CERT_PATH", ca_cert):
+    with mock.patch.object(
+        ProviderCharm, "_ca_cert_path", new_callable=mock.PropertyMock(return_value=ca_cert)
+    ):
         yield ca_cert
 
 
@@ -142,11 +153,8 @@ def test_waits_for_kube_control(mock_create_kubeconfig, harness, caplog):
         "kubernetes-control-plane/0",
         yaml.safe_load(Path("tests/data/kube_control_data.yaml").read_text()),
     )
-    mock_create_kubeconfig.assert_has_calls(
-        [
-            mock.call(charm.CA_CERT_PATH, "/root/.kube/config", "root", charm.unit.name),
-            mock.call(charm.CA_CERT_PATH, "/home/ubuntu/.kube/config", "ubuntu", charm.unit.name),
-        ]
+    mock_create_kubeconfig.assert_called_once_with(
+        charm._ca_cert_path, charm._kubeconfig_path, "root", charm.unit.name
     )
     assert charm.unit.status == MaintenanceStatus("Deploying Cloud Controller Manager")
     storage_messages = {r.message for r in caplog.records if "provider" in r.filename}

@@ -23,7 +23,7 @@ from semver import VersionInfo
 
 log = logging.getLogger("updating controller-manager")
 logging.basicConfig(level=logging.INFO)
-GH_REPO = "https://github.com/kubernetes/{repo}"
+GH_REPO = "https://github.com/{repo}"
 GH_TAGS = "https://api.github.com/repos/{repo}/tags"
 GH_RAW = "https://raw.githubusercontent.com/{repo}/{rel}/{path}/{manifest}"
 
