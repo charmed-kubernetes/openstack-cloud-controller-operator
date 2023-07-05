@@ -1,17 +1,28 @@
-# Learn more about charmcraft.yaml configuration at:
-# https://juju.is/docs/sdk/charmcraft-config
-type: "charm"
+# Copyright 2022 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+type: charm
 bases:
   - build-on:
-    - name: "ubuntu"
-      channel: "20.04"
+      - name: ubuntu
+        channel: "20.04"
+        architectures: 
+          - amd64
     run-on:
-    - name: "ubuntu"
-      channel: "20.04"
+      - name: ubuntu
+        channel: "20.04"
+        architectures:
+          - amd64
+          - arm64
+      - name: ubuntu
+        channel: "22.04"
+        architectures:
+          - amd64
+          - arm64
 parts:
   charm:
     build-packages:
       - git
+    charm-python-packages: [setuptools, pip]
     prime:
       - upstream/**
-      - schemas/**
