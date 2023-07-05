@@ -1,4 +1,4 @@
-# openstack-cloud-controller-operator
+# openstack-cloud-controller
 
 ## Description
 
@@ -7,43 +7,32 @@ Cloud Provider.
 
 ## Usage
 
-The charm requires OpenStack credentials and connection information, which
-can be provided either directly, via config, or via the `openstack-integration`
-relation to the [OpenStack Integrator charm](https://charmhub.io/openstack-integrator).
+The charm requires openstack credentials and connection information, which
+can be provided via the `openstack-integration` relation to the 
+[Openstack Integrator charm](https://charmhub.io/openstack-integrator).
 
-```
-juju offer cluster-model.openstack-integrator:clients
-juju consume cluster-model.openstack-integrator
-juju deploy openstack-cloud-controller-operator
-juju relate openstack-cloud-controller-operator openstack-integrator
+
+## Deployment
+
+### The full process
+
+```bash
+juju deploy charmed-kubernetes
+juju config kubernetes-control-plane allow-privileged=true
+juju deploy openstack-integrator --trust
+juju deploy openstack-cloud-controller
 ```
 
 You must also tell the cluster on which it is deployed that it will be
 acting as an external cloud provider. For Charmed Kubernetes, you can
 simply relate it to the control plane.
 
+```bash
+juju relate openstack-cloud-controller:certificates  easyrsa:client
+juju relate openstack-cloud-controller:kube-control  kubernetes-control-plane:kube-control
+juju relate openstack-cloud-controller:openstack     openstack-integrator:clients
+juju relate openstack-cloud-controller:external-cloud-provider  kubernetes-control-plane:external-cloud-provider
 ```
-juju offer openstack-cloud-controller-operator:external-cloud-provider
-juju switch cluster-model
-juju consume k8s-model.openstack-cloud-controller-operator
-juju relate kubernetes-control-plane openstack-cloud-controller-operator
-```
-
-For MicroK8s, you will need to manually modified the config for the following
-services to set `cloud-provider=external`, as described in the MicroK8s
-documentation under [Configuring Services](https://microk8s.io/docs/configuring-services):
-
-  * `snap.microk8s.daemon-apiserver`
-  * `snap.microk8s.daemon-controller-manager`
-  * `snap.microk8s.daemon-kubelet`
-
-## Relations
-
-In addition to the integration and external cloud provider relations, this
-charm provides a `cloud-config` relation for use with charms such as the
-Cinder CSI Operator. This relation allows the other charms to be informed
-when the `cloud-config` secret is created or updated based on the auth and
-connection information provided to this charm.
 
 ## Contributing
 

@@ -7,7 +7,7 @@ description: >-
   The OpenStack cloud provider provides the Kubernetes cluster access to
   native resources from OpenStack, such as storage and load balancers.
   This operator includes the core Cloud Controller component.
-docs: https://discourse.charmhub.io/t/openstack-cloud-controller-docs-index/????
+docs: https://discourse.charmhub.io/t/openstack-cloud-controller-docs-index/11083
 subordinate: true
 tags:
   - kubernetes
