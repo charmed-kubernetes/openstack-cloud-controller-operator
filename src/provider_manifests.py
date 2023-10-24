@@ -45,11 +45,11 @@ class CreateSecret(Addition):
         )
 
 
-class UpdateSecrets(Patch):
-    """Update the secret name in Pods and DaemonSets."""
+class UpdateDaemonSet(Patch):
+    """Update the CCM DaemonSets."""
 
     def __call__(self, obj):
-        """Update the secret volume spec in daemonsets and pods."""
+        """Patch the openstack CCM daemonset."""
         if not (obj.kind == "DaemonSet" and obj.metadata.name == RESOURCE_NAME):
             return
 
@@ -57,6 +57,15 @@ class UpdateSecrets(Patch):
             if volume.secret:
                 volume.secret.secretName = SECRET_NAME
                 log.info(f"Setting secret for {obj.kind}/{obj.metadata.name}")
+
+        cluster_name = self.manifests.config.get("cluster-name")
+        msg = f"Patching cluster-name for {obj.kind}/{obj.metadata.name}"
+        for container in obj.spec.template.spec.containers:
+            if container.name == RESOURCE_NAME:
+                for env in container.env:
+                    if env.name == "CLUSTER_NAME":
+                        env.value = cluster_name
+                        log.info(f"{msg} by env")
 
 
 class ProviderManifests(Manifests):
@@ -71,7 +80,7 @@ class ProviderManifests(Manifests):
                 CreateSecret(self),
                 ManifestLabel(self),
                 ConfigRegistry(self),
-                UpdateSecrets(self),  # update secrets
+                UpdateDaemonSet(self),
             ],
         )
         self.integrator = integrator
@@ -85,6 +94,7 @@ class ProviderManifests(Manifests):
 
         if self.kube_control.is_ready:
             config["image-registry"] = self.kube_control.get_registry_location()
+            config["cluster-name"] = self.kube_control.get_cluster_tag()
 
         if self.integrator.is_ready:
             config["cloud-conf"] = self.integrator.cloud_conf_b64
@@ -105,7 +115,7 @@ class ProviderManifests(Manifests):
 
     def evaluate(self) -> Optional[str]:
         """Determine if manifest_config can be applied to manifests."""
-        for prop in ["cloud-conf"]:
+        for prop in ["cloud-conf", "cluster-name"]:
             if not self.config.get(prop):
                 return f"Provider manifests waiting for definition of {prop}"
         return None
