@@ -135,7 +135,7 @@ def sync_asset(image: str, registry: Registry):
     return SyncAsset(source=image, target=dest, type="image")
 
 
-def main(source: str, registry: Optional[Registry], check: bool, debug: bool):
+def main(source: str, registry: Registry, check: bool, debug: bool):
     """Main update logic."""
     local_releases = gather_current(source)
     gh_releases = gather_releases(source)
@@ -187,7 +187,7 @@ def gather_current(source: str) -> Set[Release]:
     manifests = SOURCES[source]["manifests"]
     releases = defaultdict(list)
     for release_path in (FILEDIR / source / "manifests").glob("*/*.yaml"):
-        if release_path.name in manifests:
+        if release_path.name in [f"{idx:03}-{man}" for idx, man in enumerate(manifests)]:
             releases[release_path.parent.name].append(release_path)
     return set(Release(version, files) for version, files in releases.items())
 
@@ -274,9 +274,8 @@ def mirror_image(images: List[str], registry: Registry, check: bool, debug: bool
         )
         while proc.returncode is None:
             for line in proc.stdout:
-                print(line.strip())
+                log.warning(line.strip())
             proc.poll()
-
 
 def get_argparser():
     """Build the argparse instance."""
@@ -325,23 +324,15 @@ def get_argparser():
     return parser
 
 
-class UpdateError(Exception):
-    """Represents an error performing the update."""
-
-
 if __name__ == "__main__":
-    try:
-        args = get_argparser().parse_args()
-        registry = Registry(args.registry, args.user_pass)
-        image_set = set()
-        for source in args.sources:
-            version, source_images = main(source, registry, args.check, args.debug)
-            Path(FILEDIR, source, "version").write_text(f"{version}\n")
-            print(f"source: {source} latest={version}")
-            image_set |= source_images
-        print("images:")
-        for image in sorted(image_set):
-            print(image)
-    except UpdateError as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
+    args = get_argparser().parse_args()
+    registry = Registry(args.registry, args.user_pass)
+    image_set = set()
+    for source in args.sources:
+        version, source_images = main(source, registry, args.check, args.debug)
+        Path(FILEDIR, source, "version").write_text(f"{version}\n")
+        log.info(f"source: {source} latest={version}")
+        image_set |= source_images
+    log.info("images:")
+    for image in sorted(image_set):
+        log.info(image)
