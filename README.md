@@ -38,5 +38,5 @@ juju relate openstack-cloud-controller:external-cloud-provider  kubernetes-contr
 
 Please see the [Juju SDK docs](https://juju.is/docs/sdk) for guidelines
 on enhancements to this charm following best practice guidelines, and
-[CONTRIBUTING.md](https://github.com/canonical/openstack-cloud-controller-operator/blob/main/CONTRIBUTING.md)
+[CONTRIBUTING.md](https://github.com/charmed-kubiernetes/openstack-cloud-controller-operator/blob/main/CONTRIBUTING.md)
 for developer guidance.
