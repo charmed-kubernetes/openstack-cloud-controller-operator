@@ -34,7 +34,7 @@ class ProviderCharm(CharmBase):
         self._kubeconfig_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Relation Validator and datastore
-        self.kube_control = KubeControlRequirer(self)
+        self.kube_control = KubeControlRequirer(self, schemas="0,1")
         self.certificates = CertificatesRequires(self)
         self.integrator = OpenstackIntegrationRequirer(self)
         # Config Validator and datastore
@@ -227,7 +227,7 @@ class ProviderCharm(CharmBase):
                     event.defer()
                     return
         self.unit.status = MaintenanceStatus("Shutting down")
-        self._kubeconfig_path.parent.unlink(missing_ok=True)
+        self._kubeconfig_path.parent.rmdir()
 
 
 if __name__ == "__main__":
