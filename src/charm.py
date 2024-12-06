@@ -6,6 +6,7 @@
 import logging
 import os
 from pathlib import Path
+import shutil
 
 from ops.charm import CharmBase
 from ops.framework import StoredState
@@ -227,7 +228,11 @@ class ProviderCharm(CharmBase):
                     event.defer()
                     return
         self.unit.status = MaintenanceStatus("Shutting down")
-        self._kubeconfig_path.parent.rmdir()
+        if self._kubeconfig_path.parent.is_dir() and self._kubeconfig_path.parent.exists():
+            shutil.rmtree(self._kubeconfig_path.parent)
+        elif self._kubeconfig_path.parent.exists():
+            # Note(Hue): This should never happen but whatever I guess...
+            self._kubeconfig_path.parent.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
