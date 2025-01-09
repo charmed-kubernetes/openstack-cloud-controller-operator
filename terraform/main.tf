@@ -13,5 +13,4 @@ resource "juju_application" "openstack_cloud_controller" {
   }
 
   config      = var.config
-  constraints = var.constraints
 }
