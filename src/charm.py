@@ -119,7 +119,7 @@ class ProviderCharm(ops.CharmBase):
             self.app.status = ops.ActiveStatus(self.collector.long_version)
 
     def _kube_control(self, event):
-        self.kube_control.set_auth_request(self.unit.name)
+        self.kube_control.set_auth_request(self.unit.name, "system:masters")
         return self._merge_config(event)
 
     def _check_integrator(self, event):
