@@ -5,8 +5,8 @@
 
 import logging
 import os
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 import ops
 from ops.interface_kube_control import KubeControlRequirer
