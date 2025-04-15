@@ -8,6 +8,9 @@ from hashlib import md5
 from typing import Dict, Optional
 
 from lightkube.codecs import AnyResource, from_dict
+from lightkube.models.core_v1 import EnvVar
+from ops.interface_kube_control import KubeControlRequirer
+from ops.interface_openstack_integration import OpenstackIntegrationRequirer
 from ops.manifests import Addition, ConfigRegistry, ManifestLabel, Manifests, Patch
 
 log = logging.getLogger(__file__)
@@ -67,11 +70,20 @@ class UpdateDaemonSet(Patch):
                         env.value = cluster_name
                         log.info(f"{msg} by env")
 
+                for k, v in (self.manifests.config.get("proxy-config") or {}).items():
+                    container.env.append(EnvVar(name=k, value=v))
+
 
 class ProviderManifests(Manifests):
     """Deployment Specific details for the cloud-controller-manager."""
 
-    def __init__(self, charm, charm_config, kube_control, integrator):
+    def __init__(
+        self,
+        charm,
+        charm_config,
+        kube_control: KubeControlRequirer,
+        integrator: OpenstackIntegrationRequirer,
+    ):
         super().__init__(
             RESOURCE_NAME,
             charm.model,
@@ -99,6 +111,7 @@ class ProviderManifests(Manifests):
         if self.integrator.is_ready:
             config["cloud-conf"] = self.integrator.cloud_conf_b64
             config["endpoint-ca-cert"] = self.integrator.endpoint_tls_ca
+            config["proxy-config"] = self.integrator.proxy_config
 
         config.update(**self.charm_config.available_data)
 
