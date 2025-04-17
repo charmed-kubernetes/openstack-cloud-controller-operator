@@ -98,17 +98,13 @@ class ProviderManifests(Manifests):
     @property
     def config(self) -> Dict:
         """Returns current config available from charm config and joined relations."""
-        config: Dict = {}
-
-        if self.kube_control.is_ready:
-            config["image-registry"] = self.kube_control.get_registry_location()
-            config["cluster-name"] = self.kube_control.get_cluster_tag()
-
-        if self.integrator.is_ready:
-            config["cloud-conf"] = self.integrator.cloud_conf_b64.decode()
-            config["endpoint-ca-cert"] = self.integrator.endpoint_tls_ca.decode()
-
-        config.update(**self.charm_config.available_data)
+        config = {
+            "image-registry": self.kube_control.get_registry_location(),
+            "cluster-name": self.kube_control.get_cluster_tag(),
+            "cloud-conf": (val := self.integrator.cloud_conf_b64) and val.decode(),
+            "endpoint-ca-cert": (val := self.integrator.endpoint_tls_ca) and val.decode(),
+            **self.charm_config.available_data,
+        }
 
         for key, value in dict(**config).items():
             if value == "" or value is None:
