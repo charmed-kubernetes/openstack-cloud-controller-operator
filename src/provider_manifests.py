@@ -2,20 +2,13 @@
 # See LICENSE file for licensing details.
 """Implementation of cloud-controller specific details of the kubernetes manifests."""
 
+import hashlib
+import json
 import logging
-import pickle
-from hashlib import md5
 from typing import Dict, Optional
 
 from lightkube.codecs import AnyResource, from_dict
-from ops.manifests import (
-    Addition,
-    ConfigRegistry,
-    ManifestLabel,
-    Manifests,
-    Patch,
-    literals,
-)
+from ops.manifests import Addition, ConfigRegistry, ManifestLabel, Manifests, Patch
 
 log = logging.getLogger(__file__)
 NAMESPACE = "kube-system"
@@ -38,7 +31,7 @@ class CreateSecret(Addition):
         secret_config = {}
         for k, new_k in self.CONFIG_TO_SECRET.items():
             if value := self.manifests.config.get(k):
-                secret_config[new_k] = value.decode()
+                secret_config[new_k] = value
 
         log.info("Encode secret data for cloud-controller.")
         return from_dict(
@@ -61,7 +54,7 @@ class UpdateDaemonSet(Patch):
             return
 
         # Rolling restart when the hash changes
-        hash_key = ".".join([self.manifests.model.app.name, literals.APP_LABEL])
+        hash_key = "juju.is/manifest-hash"
         hash_value = str(self.manifests.hash())
         if not (annotations := obj.spec.template.metadata.annotations):
             annotations = obj.spec.template.metadata.annotations = {}
@@ -112,8 +105,8 @@ class ProviderManifests(Manifests):
             config["cluster-name"] = self.kube_control.get_cluster_tag()
 
         if self.integrator.is_ready:
-            config["cloud-conf"] = self.integrator.cloud_conf_b64
-            config["endpoint-ca-cert"] = self.integrator.endpoint_tls_ca
+            config["cloud-conf"] = self.integrator.cloud_conf_b64.decode()
+            config["endpoint-ca-cert"] = self.integrator.endpoint_tls_ca.decode()
 
         config.update(**self.charm_config.available_data)
 
@@ -126,7 +119,10 @@ class ProviderManifests(Manifests):
 
     def hash(self) -> int:
         """Calculate a hash of the current configuration."""
-        return int(md5(pickle.dumps(self.config)).hexdigest(), 16)
+        json_str = json.dumps(self.config, sort_keys=True)
+        hash = hashlib.sha256()
+        hash.update(json_str.encode())
+        return int(hash.hexdigest(), 16)
 
     def evaluate(self) -> Optional[str]:
         """Determine if manifest_config can be applied to manifests."""
