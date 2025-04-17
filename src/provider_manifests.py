@@ -8,7 +8,14 @@ from hashlib import md5
 from typing import Dict, Optional
 
 from lightkube.codecs import AnyResource, from_dict
-from ops.manifests import Addition, ConfigRegistry, ManifestLabel, Manifests, Patch
+from ops.manifests import (
+    Addition,
+    ConfigRegistry,
+    ManifestLabel,
+    Manifests,
+    Patch,
+    literals,
+)
 
 log = logging.getLogger(__file__)
 NAMESPACE = "kube-system"
@@ -52,6 +59,14 @@ class UpdateDaemonSet(Patch):
         """Patch the openstack CCM daemonset."""
         if not (obj.kind == "DaemonSet" and obj.metadata.name == RESOURCE_NAME):
             return
+
+        # Rolling restart when the hash changes
+        hash_key = ".".join([self.manifests.model.app.name, literals.APP_LABEL])
+        hash_value = str(self.manifests.hash())
+        if not (annotations := obj.spec.template.metadata.annotations):
+            annotations = obj.spec.template.metadata.annotations = {}
+        annotations[hash_key] = hash_value
+        log.info("Setting hash for %s/%s", obj.kind, obj.metadata.name)
 
         for volume in obj.spec.template.spec.volumes:
             if volume.secret:
