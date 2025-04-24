@@ -43,8 +43,14 @@ def kube_control():
     return kube_control
 
 
+@pytest.fixture(params=[None, "", NO_PROXY])
+def no_proxy(request):
+    """Return the no_proxy value."""
+    return request.param
+
+
 @pytest.fixture
-def integrator():
+def integrator(no_proxy):
     """Return the openstack integration mock."""
     integrator = mock.MagicMock(spec=OpenstackIntegrationRequirer)
     integrator.evaluate_relation.return_value = None
@@ -53,7 +59,7 @@ def integrator():
     integrator.proxy_config = {
         "HTTP_PROXY": PROXY_URL_1,
         "HTTPS_PROXY": PROXY_URL_2,
-        "NO_PROXY": NO_PROXY,
+        "NO_PROXY": no_proxy,
     }
     return integrator
 
@@ -69,7 +75,7 @@ def provider(kube_control, charm_config, integrator):
     )
 
 
-def test_patch_daemon_set(provider):
+def test_patch_daemon_set(provider, no_proxy):
     """Test the patching of the daemon set."""
 
     update_ds = provider.manipulations[-1]
@@ -86,10 +92,11 @@ def test_patch_daemon_set(provider):
     container.name = ds.metadata.name = "openstack-cloud-controller-manager"
     ds.spec.template.spec.volumes = [secret_volume]
     ds.spec.template.spec.containers = [container]
+    expected_no_proxy = f"{K8S_DEFAULT_SVC},{no_proxy}" if no_proxy else K8S_DEFAULT_SVC
 
     update_ds(ds)
     assert secret_volume.secret.secretName == "cloud-controller-config"
     assert EnvVar(name="CLUSTER_NAME", value=CLUSTER_NAME) in container.env
     assert EnvVar(name="HTTP_PROXY", value=PROXY_URL_1) in container.env
     assert EnvVar(name="HTTPS_PROXY", value=PROXY_URL_2) in container.env
-    assert EnvVar(name="NO_PROXY", value=f"{K8S_DEFAULT_SVC},{NO_PROXY}") in container.env
+    assert EnvVar(name="NO_PROXY", value=expected_no_proxy) in container.env

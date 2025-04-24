@@ -50,15 +50,31 @@ class CreateSecret(Addition):
 
 
 def _proxy_config_to_env_vars(proxy_config: Dict[str, str]) -> List[EnvVar]:
-    """Convert proxy config to env vars."""
+    """Convert proxy config to env vars.
+
+    If the proxy config is empty, return an empty list.
+    If the proxy config is not empty, return a list of EnvVar objects
+
+    Args:
+        proxy_config: A dictionary of proxy config values.
+
+    Returns:
+        A list of EnvVar objects for the proxy config.
+    """
+    if not proxy_config:
+        return []
+    # Confirm all keys are upper case, all values are strings
+    as_upper = {k.upper(): (v or "") for k, v in proxy_config.items()}
+    # Confirm no empty values for each of the required fields
+    required_fields = {"HTTP_PROXY": "", "HTTPS_PROXY": "", "NO_PROXY": ""}
+    all_fields = {**required_fields, **as_upper}
     env_vars = []
-    for key, value in proxy_config.items():
+    for key, value in all_fields.items():
         # Only add env vars that are not empty
-        key = key.upper()
         if key == "NO_PROXY" and K8S_DEFAULT_SVC not in value:
             # Add kubernetes.default.svc to no_proxy
-            value = f"{K8S_DEFAULT_SVC},{value}"
-        if key in ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"]:
+            value = ",".join(filter(None, [K8S_DEFAULT_SVC, value]))
+        if key in required_fields:
             env_vars.append(EnvVar(name=key, value=value))
     return env_vars
 
