@@ -5,15 +5,19 @@
 import hashlib
 import json
 import logging
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from lightkube.codecs import AnyResource, from_dict
+from lightkube.models.core_v1 import EnvVar
+from ops.interface_kube_control import KubeControlRequirer
+from ops.interface_openstack_integration import OpenstackIntegrationRequirer
 from ops.manifests import Addition, ConfigRegistry, ManifestLabel, Manifests, Patch
 
 log = logging.getLogger(__file__)
 NAMESPACE = "kube-system"
 RESOURCE_NAME = "openstack-cloud-controller-manager"
 SECRET_NAME = "cloud-controller-config"
+K8S_DEFAULT_SVC = "kubernetes.default.svc"
 
 
 class CreateSecret(Addition):
@@ -43,6 +47,36 @@ class CreateSecret(Addition):
                 data=secret_config,
             )
         )
+
+
+def _proxy_config_to_env_vars(proxy_config: Dict[str, str]) -> List[EnvVar]:
+    """Convert proxy config to env vars.
+
+    If the proxy config is empty, return an empty list.
+    If the proxy config is not empty, return a list of EnvVar objects
+
+    Args:
+        proxy_config: A dictionary of proxy config values.
+
+    Returns:
+        A list of EnvVar objects for the proxy config.
+    """
+    if not proxy_config:
+        return []
+    # Confirm all keys are upper case, all values are strings
+    as_upper = {k.upper(): (v or "") for k, v in proxy_config.items()}
+    # Confirm no empty values for each of the required fields
+    required_fields = {"HTTP_PROXY": "", "HTTPS_PROXY": "", "NO_PROXY": ""}
+    all_fields = {**required_fields, **as_upper}
+    env_vars = []
+    for key, value in all_fields.items():
+        # Only add env vars that are not empty
+        if key == "NO_PROXY" and K8S_DEFAULT_SVC not in value:
+            # Add kubernetes.default.svc to no_proxy
+            value = ",".join(filter(None, [K8S_DEFAULT_SVC, value]))
+        if key in required_fields:
+            env_vars.append(EnvVar(name=key, value=value))
+    return env_vars
 
 
 class UpdateDaemonSet(Patch):
@@ -75,11 +109,20 @@ class UpdateDaemonSet(Patch):
                         env.value = cluster_name
                         log.info(f"{msg} by env")
 
+                proxy_config = self.manifests.config.get("proxy-config") or {}
+                container.env.extend(_proxy_config_to_env_vars(proxy_config))
+
 
 class ProviderManifests(Manifests):
     """Deployment Specific details for the cloud-controller-manager."""
 
-    def __init__(self, charm, charm_config, kube_control, integrator):
+    def __init__(
+        self,
+        charm,
+        charm_config,
+        kube_control: KubeControlRequirer,
+        integrator: OpenstackIntegrationRequirer,
+    ):
         super().__init__(
             RESOURCE_NAME,
             charm.model,
@@ -103,6 +146,7 @@ class ProviderManifests(Manifests):
             "cluster-name": self.kube_control.get_cluster_tag(),
             "cloud-conf": (val := self.integrator.cloud_conf_b64) and val.decode(),
             "endpoint-ca-cert": (val := self.integrator.endpoint_tls_ca) and val.decode(),
+            "proxy-config": self.integrator.proxy_config,
             **self.charm_config.available_data,
         }
 
