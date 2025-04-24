@@ -163,6 +163,7 @@ def test_waits_for_kube_control(mock_create_kubeconfig, harness, caplog):
     assert storage_messages == {
         "Encode secret data for cloud-controller.",
         "Patching cluster-name for DaemonSet/openstack-cloud-controller-manager by env",
+        "Setting hash for DaemonSet/openstack-cloud-controller-manager",
         "Setting secret for DaemonSet/openstack-cloud-controller-manager",
     }
 

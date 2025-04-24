@@ -2,9 +2,9 @@
 # See LICENSE file for licensing details.
 """Implementation of cloud-controller specific details of the kubernetes manifests."""
 
+import hashlib
+import json
 import logging
-import pickle
-from hashlib import md5
 from typing import Dict, Optional
 
 from lightkube.codecs import AnyResource, from_dict
@@ -34,7 +34,7 @@ class CreateSecret(Addition):
         secret_config = {}
         for k, new_k in self.CONFIG_TO_SECRET.items():
             if value := self.manifests.config.get(k):
-                secret_config[new_k] = value.decode()
+                secret_config[new_k] = value
 
         log.info("Encode secret data for cloud-controller.")
         return from_dict(
@@ -55,6 +55,14 @@ class UpdateDaemonSet(Patch):
         """Patch the openstack CCM daemonset."""
         if not (obj.kind == "DaemonSet" and obj.metadata.name == RESOURCE_NAME):
             return
+
+        # Rolling restart when the hash changes
+        hash_key = "juju.is/manifest-hash"
+        hash_value = str(self.manifests.hash())
+        if not (annotations := obj.spec.template.metadata.annotations):
+            annotations = obj.spec.template.metadata.annotations = {}
+        annotations[hash_key] = hash_value
+        log.info("Setting hash for %s/%s", obj.kind, obj.metadata.name)
 
         for volume in obj.spec.template.spec.volumes:
             if volume.secret:
@@ -102,18 +110,14 @@ class ProviderManifests(Manifests):
     @property
     def config(self) -> Dict:
         """Returns current config available from charm config and joined relations."""
-        config: Dict = {}
-
-        if self.kube_control.is_ready:
-            config["image-registry"] = self.kube_control.get_registry_location()
-            config["cluster-name"] = self.kube_control.get_cluster_tag()
-
-        if self.integrator.is_ready:
-            config["cloud-conf"] = self.integrator.cloud_conf_b64
-            config["endpoint-ca-cert"] = self.integrator.endpoint_tls_ca
-            config["proxy-config"] = self.integrator.proxy_config
-
-        config.update(**self.charm_config.available_data)
+        config = {
+            "image-registry": self.kube_control.get_registry_location(),
+            "cluster-name": self.kube_control.get_cluster_tag(),
+            "cloud-conf": (val := self.integrator.cloud_conf_b64) and val.decode(),
+            "endpoint-ca-cert": (val := self.integrator.endpoint_tls_ca) and val.decode(),
+            "proxy-config": self.integrator.proxy_config
+            **self.charm_config.available_data,
+        }
 
         for key, value in dict(**config).items():
             if value == "" or value is None:
@@ -124,7 +128,10 @@ class ProviderManifests(Manifests):
 
     def hash(self) -> int:
         """Calculate a hash of the current configuration."""
-        return int(md5(pickle.dumps(self.config)).hexdigest(), 16)
+        json_str = json.dumps(self.config, sort_keys=True)
+        hash = hashlib.sha256()
+        hash.update(json_str.encode())
+        return int(hash.hexdigest(), 16)
 
     def evaluate(self) -> Optional[str]:
         """Determine if manifest_config can be applied to manifests."""
