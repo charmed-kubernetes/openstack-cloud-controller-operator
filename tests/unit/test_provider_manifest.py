@@ -12,6 +12,7 @@ from lightkube.resources.apps_v1 import DaemonSet
 import provider_manifests
 from charm import KubeControlRequirer, OpenstackIntegrationRequirer, ProviderCharm
 from config import CharmConfig
+from provider_manifests import K8S_DEFAULT_SVC
 
 CLUSTER_NAME = "k8s-cluster-name"
 PROXY_URL = "http://proxy:80"
@@ -25,8 +26,8 @@ def charm_config():
     """Return the charm config."""
     config = mock.MagicMock(spec=CharmConfig)
     config.available_data = {
-        "cloud-conf": b"abc",
-        "endpoint-ca-cert": b"def",
+        "cloud-conf": "abc",
+        "endpoint-ca-cert": "def",
     }
     return config
 
@@ -36,6 +37,7 @@ def kube_control():
     """Return the kube control mock."""
     kube_control = mock.MagicMock(spec=KubeControlRequirer)
     kube_control.evaluate_relation.return_value = None
+    kube_control.get_registry_location.return_value = "rocks.canonical.com/cdk"
     kube_control.kubeconfig = b"abc"
     kube_control.get_cluster_tag.return_value = CLUSTER_NAME
     return kube_control
@@ -90,4 +92,4 @@ def test_patch_daemon_set(provider):
     assert EnvVar(name="CLUSTER_NAME", value=CLUSTER_NAME) in container.env
     assert EnvVar(name="HTTP_PROXY", value=PROXY_URL_1) in container.env
     assert EnvVar(name="HTTPS_PROXY", value=PROXY_URL_2) in container.env
-    assert EnvVar(name="NO_PROXY", value=NO_PROXY) in container.env
+    assert EnvVar(name="NO_PROXY", value=f"{K8S_DEFAULT_SVC},{NO_PROXY}") in container.env

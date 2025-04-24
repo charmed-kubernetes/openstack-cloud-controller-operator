@@ -5,7 +5,7 @@
 import hashlib
 import json
 import logging
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from lightkube.codecs import AnyResource, from_dict
 from lightkube.models.core_v1 import EnvVar
@@ -17,6 +17,7 @@ log = logging.getLogger(__file__)
 NAMESPACE = "kube-system"
 RESOURCE_NAME = "openstack-cloud-controller-manager"
 SECRET_NAME = "cloud-controller-config"
+K8S_DEFAULT_SVC = "kubernetes.default.svc"
 
 
 class CreateSecret(Addition):
@@ -46,6 +47,20 @@ class CreateSecret(Addition):
                 data=secret_config,
             )
         )
+
+
+def _proxy_config_to_env_vars(proxy_config: Dict[str, str]) -> List[EnvVar]:
+    """Convert proxy config to env vars."""
+    env_vars = []
+    for key, value in proxy_config.items():
+        # Only add env vars that are not empty
+        key = key.upper()
+        if key == "NO_PROXY" and K8S_DEFAULT_SVC not in value:
+            # Add kubernetes.default.svc to no_proxy
+            value = f"{K8S_DEFAULT_SVC},{value}"
+        if key in ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"]:
+            env_vars.append(EnvVar(name=key, value=value))
+    return env_vars
 
 
 class UpdateDaemonSet(Patch):
@@ -78,8 +93,8 @@ class UpdateDaemonSet(Patch):
                         env.value = cluster_name
                         log.info(f"{msg} by env")
 
-                for k, v in (self.manifests.config.get("proxy-config") or {}).items():
-                    container.env.append(EnvVar(name=k, value=v))
+                proxy_config = self.manifests.config.get("proxy-config") or {}
+                container.env.extend(_proxy_config_to_env_vars(proxy_config))
 
 
 class ProviderManifests(Manifests):
@@ -115,7 +130,7 @@ class ProviderManifests(Manifests):
             "cluster-name": self.kube_control.get_cluster_tag(),
             "cloud-conf": (val := self.integrator.cloud_conf_b64) and val.decode(),
             "endpoint-ca-cert": (val := self.integrator.endpoint_tls_ca) and val.decode(),
-            "proxy-config": self.integrator.proxy_config
+            "proxy-config": self.integrator.proxy_config,
             **self.charm_config.available_data,
         }
 
