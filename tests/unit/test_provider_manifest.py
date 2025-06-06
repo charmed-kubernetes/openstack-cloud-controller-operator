@@ -12,13 +12,13 @@ from lightkube.resources.apps_v1 import DaemonSet
 import provider_manifests
 from charm import KubeControlRequirer, OpenstackIntegrationRequirer, ProviderCharm
 from config import CharmConfig
-from provider_manifests import K8S_DEFAULT_SVC
+from provider_manifests import K8S_DEFAULT_NO_PROXY
 
 CLUSTER_NAME = "k8s-cluster-name"
 PROXY_URL = "http://proxy:80"
 PROXY_URL_1 = f"{PROXY_URL}81"
 PROXY_URL_2 = f"{PROXY_URL}82"
-NO_PROXY = "127.0.0.1,localhost,::1"
+NO_PROXY = "127.0.0.1,localhost,::1,example.com"
 
 
 @pytest.fixture
@@ -60,6 +60,9 @@ def integrator(no_proxy):
         "HTTP_PROXY": PROXY_URL_1,
         "HTTPS_PROXY": PROXY_URL_2,
         "NO_PROXY": no_proxy,
+        "http_proxy": PROXY_URL_1,
+        "https_proxy": PROXY_URL_2,
+        "no_proxy": no_proxy,
     }
     return integrator
 
@@ -92,7 +95,8 @@ def test_patch_daemon_set(provider, no_proxy):
     container.name = ds.metadata.name = "openstack-cloud-controller-manager"
     ds.spec.template.spec.volumes = [secret_volume]
     ds.spec.template.spec.containers = [container]
-    expected_no_proxy = f"{K8S_DEFAULT_SVC},{no_proxy}" if no_proxy else K8S_DEFAULT_SVC
+    split_no_proxy = no_proxy.split(",") if no_proxy else []
+    expected_no_proxy = ",".join(dict.fromkeys(K8S_DEFAULT_NO_PROXY + split_no_proxy))
 
     update_ds(ds)
     assert secret_volume.secret.secretName == "cloud-controller-config"
@@ -100,3 +104,6 @@ def test_patch_daemon_set(provider, no_proxy):
     assert EnvVar(name="HTTP_PROXY", value=PROXY_URL_1) in container.env
     assert EnvVar(name="HTTPS_PROXY", value=PROXY_URL_2) in container.env
     assert EnvVar(name="NO_PROXY", value=expected_no_proxy) in container.env
+    assert EnvVar(name="http_proxy", value=PROXY_URL_1) in container.env
+    assert EnvVar(name="https_proxy", value=PROXY_URL_2) in container.env
+    assert EnvVar(name="no_proxy", value=expected_no_proxy) in container.env
