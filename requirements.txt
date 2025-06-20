@@ -2,6 +2,6 @@ lightkube
 ops
 ops.manifest>=1.1.3,<2.0.0
 pydantic==1.*
-ops.interface_kube_control @ git+https://github.com/charmed-kubernetes/interface-kube-control.git@main#subdirectory=ops
-ops.interface-tls-certificates @ git+https://github.com/charmed-kubernetes/interface-tls-certificates.git@main#subdirectory=ops
-ops.interface_openstack_integration @ git+https://github.com/charmed-kubernetes/interface-openstack-integration.git@main#subdirectory=ops
+ops.interface_kube_control @ git+https://github.com/charmed-kubernetes/interface-kube-control.git@release_1.32#subdirectory=ops
+ops.interface-tls-certificates @ git+https://github.com/charmed-kubernetes/interface-tls-certificates.git@release_1.32#subdirectory=ops
+ops.interface_openstack_integration @ git+https://github.com/charmed-kubernetes/interface-openstack-integration.git@release_1.32#subdirectory=ops
