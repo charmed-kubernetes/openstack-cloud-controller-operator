@@ -5,10 +5,10 @@
 import hashlib
 import json
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
+import jmodelproxylib
 from lightkube.codecs import AnyResource, from_dict
-from lightkube.models.core_v1 import EnvVar
 from ops.interface_kube_control import KubeControlRequirer
 from ops.interface_openstack_integration import OpenstackIntegrationRequirer
 from ops.manifests import Addition, ConfigRegistry, ManifestLabel, Manifests, Patch
@@ -49,34 +49,6 @@ class CreateSecret(Addition):
         )
 
 
-def _proxy_config_to_env_vars(proxy_config: Dict[str, str]) -> List[EnvVar]:
-    """Convert proxy config to env vars.
-
-    If the proxy config is empty, return an empty list.
-    If the proxy config is not empty, return a list of EnvVar objects
-
-    Args:
-        proxy_config: A dictionary of proxy config values.
-
-    Returns:
-        A list of EnvVar objects for the proxy config.
-    """
-    if not proxy_config:
-        return []
-    fields = ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"]
-    settings = {k: (proxy_config.get(k) or "") for k in fields}
-    settings.update({k: (proxy_config.get(k) or "") for k in map(str.lower, fields)})
-    env_vars = []
-    for key, value in settings.items():
-        # Only add env vars that are not empty
-        if key.upper() == "NO_PROXY":
-            # Ensure no_proxy_extras are included
-            uniq_seen = dict.fromkeys(K8S_DEFAULT_NO_PROXY + value.split(","))
-            value = ",".join(filter(None, uniq_seen))
-        env_vars.append(EnvVar(name=key, value=value))
-    return env_vars
-
-
 class UpdateDaemonSet(Patch):
     """Update the CCM DaemonSets."""
 
@@ -107,8 +79,9 @@ class UpdateDaemonSet(Patch):
                         env.value = cluster_name
                         log.info(f"{msg} by env")
 
-                proxy_config = self.manifests.config.get("proxy-config") or {}
-                container.env.extend(_proxy_config_to_env_vars(proxy_config))
+                enabled = self.manifests.config.get("juju-model-proxy-enable")
+                env = jmodelproxylib.environ(enabled=enabled, add_no_proxies=K8S_DEFAULT_NO_PROXY)
+                container.env.extend(jmodelproxylib.container_vars(env))
 
 
 class ProviderManifests(Manifests):
@@ -144,7 +117,6 @@ class ProviderManifests(Manifests):
             "cluster-name": self.kube_control.get_cluster_tag(),
             "cloud-conf": (val := self.integrator.cloud_conf_b64) and val.decode(),
             "endpoint-ca-cert": (val := self.integrator.endpoint_tls_ca) and val.decode(),
-            "proxy-config": self.integrator.proxy_config,
             **self.charm_config.available_data,
         }
 

@@ -3,6 +3,7 @@
 #
 # Learn more about testing at: https://juju.is/docs/sdk/testing
 
+import os
 import unittest.mock as mock
 
 import pytest
@@ -21,15 +22,34 @@ PROXY_URL_2 = f"{PROXY_URL}82"
 NO_PROXY = "127.0.0.1,localhost,::1,example.com"
 
 
+@pytest.fixture(params=["", NO_PROXY])
+def no_proxy(request):
+    """Return the no_proxy value."""
+    return request.param
+
+
+@pytest.fixture(params=[True, False])
+def respect_proxy(request):
+    """Return the juju model proxy enable value."""
+    return request.param
+
+
 @pytest.fixture
-def charm_config():
+def charm_config(respect_proxy, no_proxy):
     """Return the charm config."""
     config = mock.MagicMock(spec=CharmConfig)
     config.available_data = {
         "cloud-conf": "abc",
         "endpoint-ca-cert": "def",
+        "juju-model-proxy-enable": respect_proxy,
     }
-    return config
+    env = {
+        "JUJU_CHARM_HTTP_PROXY": PROXY_URL_1,
+        "JUJU_CHARM_HTTPS_PROXY": PROXY_URL_2,
+        "JUJU_CHARM_NO_PROXY": no_proxy,
+    }
+    with mock.patch.dict(os.environ, env, clear=True):
+        yield config
 
 
 @pytest.fixture
@@ -43,27 +63,13 @@ def kube_control():
     return kube_control
 
 
-@pytest.fixture(params=[None, "", NO_PROXY])
-def no_proxy(request):
-    """Return the no_proxy value."""
-    return request.param
-
-
 @pytest.fixture
-def integrator(no_proxy):
+def integrator():
     """Return the openstack integration mock."""
     integrator = mock.MagicMock(spec=OpenstackIntegrationRequirer)
     integrator.evaluate_relation.return_value = None
     integrator.cloud_conf_b64 = b"abc"
     integrator.endpoint_tls_ca = b"def"
-    integrator.proxy_config = {
-        "HTTP_PROXY": PROXY_URL_1,
-        "HTTPS_PROXY": PROXY_URL_2,
-        "NO_PROXY": no_proxy,
-        "http_proxy": PROXY_URL_1,
-        "https_proxy": PROXY_URL_2,
-        "no_proxy": no_proxy,
-    }
     return integrator
 
 
@@ -78,7 +84,7 @@ def provider(kube_control, charm_config, integrator):
     )
 
 
-def test_patch_daemon_set(provider, no_proxy):
+def test_patch_daemon_set(provider, respect_proxy, no_proxy):
     """Test the patching of the daemon set."""
 
     update_ds = provider.manipulations[-1]
@@ -95,15 +101,24 @@ def test_patch_daemon_set(provider, no_proxy):
     container.name = ds.metadata.name = "openstack-cloud-controller-manager"
     ds.spec.template.spec.volumes = [secret_volume]
     ds.spec.template.spec.containers = [container]
-    split_no_proxy = no_proxy.split(",") if no_proxy else []
-    expected_no_proxy = ",".join(dict.fromkeys(K8S_DEFAULT_NO_PROXY + split_no_proxy))
 
     update_ds(ds)
     assert secret_volume.secret.secretName == "cloud-controller-config"
     assert EnvVar(name="CLUSTER_NAME", value=CLUSTER_NAME) in container.env
-    assert EnvVar(name="HTTP_PROXY", value=PROXY_URL_1) in container.env
-    assert EnvVar(name="HTTPS_PROXY", value=PROXY_URL_2) in container.env
-    assert EnvVar(name="NO_PROXY", value=expected_no_proxy) in container.env
-    assert EnvVar(name="http_proxy", value=PROXY_URL_1) in container.env
-    assert EnvVar(name="https_proxy", value=PROXY_URL_2) in container.env
-    assert EnvVar(name="no_proxy", value=expected_no_proxy) in container.env
+    if respect_proxy:
+        split_no_proxy = no_proxy.split(",") if no_proxy else []
+        expected_no_proxy = ",".join(dict.fromkeys(K8S_DEFAULT_NO_PROXY + split_no_proxy))
+        assert EnvVar(name="HTTP_PROXY", value=PROXY_URL_1) in container.env
+        assert EnvVar(name="HTTPS_PROXY", value=PROXY_URL_2) in container.env
+        assert EnvVar(name="NO_PROXY", value=expected_no_proxy) in container.env
+        assert EnvVar(name="http_proxy", value=PROXY_URL_1) in container.env
+        assert EnvVar(name="https_proxy", value=PROXY_URL_2) in container.env
+        assert EnvVar(name="no_proxy", value=expected_no_proxy) in container.env
+    else:
+        keys = {e.name for e in container.env}
+        assert "HTTP_PROXY" not in keys
+        assert "HTTPS_PROXY" not in keys
+        assert "NO_PROXY" not in keys
+        assert "http_proxy" not in keys
+        assert "https_proxy" not in keys
+        assert "no_proxy" not in keys
