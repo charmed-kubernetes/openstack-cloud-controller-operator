@@ -41,7 +41,7 @@ def charm_config(respect_proxy, no_proxy):
     config.available_data = {
         "cloud-conf": "abc",
         "endpoint-ca-cert": "def",
-        "juju-model-proxy-enable": respect_proxy,
+        "web-proxy-enable": respect_proxy,
     }
     env = {
         "JUJU_CHARM_HTTP_PROXY": PROXY_URL_1,
