@@ -7,13 +7,17 @@ import json
 import logging
 from typing import Dict, Optional
 
+import charms.proxylib
 from lightkube.codecs import AnyResource, from_dict
+from ops.interface_kube_control import KubeControlRequirer
+from ops.interface_openstack_integration import OpenstackIntegrationRequirer
 from ops.manifests import Addition, ConfigRegistry, ManifestLabel, Manifests, Patch
 
 log = logging.getLogger(__file__)
 NAMESPACE = "kube-system"
 RESOURCE_NAME = "openstack-cloud-controller-manager"
 SECRET_NAME = "cloud-controller-config"
+K8S_DEFAULT_NO_PROXY = ["127.0.0.1", "localhost", "::1", "svc", "svc.cluster", "svc.cluster.local"]
 
 
 class CreateSecret(Addition):
@@ -48,7 +52,7 @@ class CreateSecret(Addition):
 class UpdateDaemonSet(Patch):
     """Update the CCM DaemonSets."""
 
-    def __call__(self, obj):
+    def __call__(self, obj: AnyResource):
         """Patch the openstack CCM daemonset."""
         if not (obj.kind == "DaemonSet" and obj.metadata.name == RESOURCE_NAME):
             return
@@ -75,11 +79,21 @@ class UpdateDaemonSet(Patch):
                         env.value = cluster_name
                         log.info(f"{msg} by env")
 
+                enabled = self.manifests.config.get("web-proxy-enable")
+                env = charms.proxylib.environ(enabled=enabled, add_no_proxies=K8S_DEFAULT_NO_PROXY)
+                container.env.extend(charms.proxylib.container_vars(env))
+
 
 class ProviderManifests(Manifests):
     """Deployment Specific details for the cloud-controller-manager."""
 
-    def __init__(self, charm, charm_config, kube_control, integrator):
+    def __init__(
+        self,
+        charm,
+        charm_config,
+        kube_control: KubeControlRequirer,
+        integrator: OpenstackIntegrationRequirer,
+    ):
         super().__init__(
             RESOURCE_NAME,
             charm.model,

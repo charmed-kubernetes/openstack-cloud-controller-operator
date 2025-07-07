@@ -13,6 +13,14 @@ options:
         juju config openstack-cloud-controller image-registry='rocks.canonical.com:443/cdk'
         juju config openstack-cloud-controller --reset image-registry
 
+  web-proxy-enable:
+    type: boolean
+    description: |
+      Whether the applications managed by this charm should be
+      proxied using juju's model-config juju-*-proxy settings.
+      (See https://documentation.ubuntu.com/juju/latest/reference/juju-cli/list-of-juju-cli-commands/model-config/).
+    default: false
+
   manager-release:
     type: string
     description: |
@@ -21,13 +29,12 @@ options:
 
       example)
         juju config openstack-cloud-controller manager-release='v1.7.3'
-      
+
       A list of supported versions is available through the action:
         juju run-action openstack-cloud-controller/leader list-releases --wait
-      
+
       To reset by to the latest supported by the charm use:
         juju config openstack-cloud-controller --reset manager-release
-      
+
       The current release deployed is available by viewing
         juju status openstack-cloud-controller
-
