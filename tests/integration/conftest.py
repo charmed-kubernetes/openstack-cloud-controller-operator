@@ -3,9 +3,9 @@
 import logging
 import random
 import string
-from pathlib import Path
 
 import pytest
+import yaml
 from lightkube import AsyncClient, KubeConfig
 from lightkube.models.meta_v1 import ObjectMeta
 from lightkube.resources.core_v1 import Namespace
@@ -20,19 +20,24 @@ def module_name(request):
 
 @pytest.fixture()
 async def kubeconfig(ops_test):
-    kubeconfig_path = ops_test.tmp_path / "kubeconfig"
-    retcode, stdout, stderr = await ops_test.run(
-        "juju",
-        "scp",
-        "kubernetes-control-plane/leader:/home/ubuntu/config",
-        kubeconfig_path,
+    k_c_p = ops_test.model.applications["k8s"]
+    (leader,) = [u for u in k_c_p.units if (await u.is_leader_from_status())]
+    action = await leader.run_action("get-kubeconfig")
+    action = await action.wait()
+    success = (
+        action.status == "completed"
+        and action.results["return-code"] == 0
+        and "kubeconfig" in action.results
     )
-    if retcode != 0:
-        log.error(f"retcode: {retcode}")
-        log.error(f"stdout:\n{stdout.strip()}")
-        log.error(f"stderr:\n{stderr.strip()}")
-        pytest.fail("Failed to copy kubeconfig from kubernetes-control-plane")
-    assert Path(kubeconfig_path).stat().st_size, "kubeconfig file is 0 bytes"
+
+    if not success:
+        logging.error(f"status: {action.status}")
+        logging.error(f"results:\n{yaml.safe_dump(action.results, indent=2)}")
+        pytest.fail("Failed to copy kubeconfig from k8s")
+
+    kubeconfig_path = ops_test.tmp_path / "kubeconfig"
+    with kubeconfig_path.open("w") as f:
+        f.write(action.results["kubeconfig"])
     yield kubeconfig_path
 
 
@@ -42,7 +47,7 @@ async def kubernetes(kubeconfig, module_name):
     namespace = f"{module_name}-{rand_str}"
     config = KubeConfig.from_file(kubeconfig)
     client = AsyncClient(
-        config=config.get(context_name="juju-context"),
+        config=config.get(context_name="k8s"),
         namespace=namespace,
         trust_env=False,
     )

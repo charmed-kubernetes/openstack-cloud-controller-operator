@@ -1,28 +1,160 @@
-# Copyright 2022 Canonical Ltd.
+# Copyright 2025 Canonical Ltd.
 # See LICENSE file for licensing details.
 
 type: charm
+name: openstack-cloud-controller
+title: OpenStack Cloud Controller
+summary: Runs the OpenStack Cloud Controller in the cluster.
+description: |-
+  The OpenStack cloud provider provides the Kubernetes cluster access to
+  native resources from OpenStack, such as storage and load balancers.
+  This operator includes the core Cloud Controller component.
+links:
+  contact: https://launchpad.net/~containers
+  documentation: https://discourse.charmhub.io/t/openstack-cloud-controller-docs-index/11083
+  issues:
+  - https://bugs.launchpad.net/charm-openstack-cloud-controller
+  source:
+  - https://github.com/canonical/openstack-cloud-controller-operator
+
+subordinate: true
+
+config:
+  options:
+    image-registry:
+      type: string
+      description: |
+        Source registry of Cloud Controller images.
+
+        By setting to a value, each image listed in the releases manifest
+        has its image-registry replaced.
+
+        If unset, the manifests will use the image registry from the kube-control relation
+
+        example)
+          juju config openstack-cloud-controller image-registry='rocks.canonical.com:443/cdk'
+          juju config openstack-cloud-controller --reset image-registry
+
+    web-proxy-enable:
+      type: boolean
+      description: |
+        Whether the applications managed by this charm should be
+        proxied using juju's model-config juju-*-proxy settings.
+        (See https://documentation.ubuntu.com/juju/latest/reference/juju-cli/list-of-juju-cli-commands/model-config/).
+      default: false
+
+    manager-release:
+      type: string
+      description: |
+        Specify the version of controller-manager-release as defined by the `release`
+        tags of https://github.com/kubernetes/cloud-provider-openstack
+
+        example)
+          juju config openstack-cloud-controller manager-release='v1.7.3'
+
+        A list of supported versions is available through the action:
+          juju run-action openstack-cloud-controller/leader list-releases --wait
+
+        To reset by to the latest supported by the charm use:
+          juju config openstack-cloud-controller --reset manager-release
+
+        The current release deployed is available by viewing
+          juju status openstack-cloud-controller
+
+resources:
+  cloud-config-overlay:
+    type: file
+    filename: cloud.conf
+    description: |-
+      Provide additional cloud.conf configuration to be appended to the
+      cloud.conf generated from the openstack-integration relation.
+
+      This configuration is overlaid, so ensure that it is valid
+      according to the OpenStack cloud provider documentation:
+
+      https://github.com/kubernetes/cloud-provider-openstack/blob/master/docs/openstack-cloud-controller-manager/using-openstack-cloud-controller-manager.md
+
+actions:
+  list-versions:
+    description: List Storage Versions supported by this charm
+  list-resources:
+    description: List Storage Resources of configured version
+    params:
+      controller:
+        type: string
+        default: ""
+        description: |
+          Filter list based on "storage" manifests.
+      resources:
+        type: string
+        default: ""
+        description: |
+          Space separated list of kubernetes resource types to filter list result
+  scrub-resources:
+    description: Remove deployments other than the current one
+    params:
+      controller:
+        type: string
+        default: ""
+        description: |
+          Filter list based on "storage" manifests.
+      resources:
+        type: string
+        default: ""
+        description: |
+          Space separated list of kubernetes resource types to filter scrubbing
+  sync-resources:
+    description: |
+      Add kubernetes resources which should be created by this charm which aren't
+      present within the cluster.
+    params:
+      controller:
+        type: string
+        default: ""
+        description: |
+          Filter list based on "storage" manifests.
+      resources:
+        type: string
+        default: ""
+        description: |
+          Space separated list of kubernetes resource types
+          to use a filter during the sync. This helps limit
+          which missing resources are applied.
+
+provides:
+  external-cloud-provider:
+    interface: external_cloud_provider
+    limit: 1
+
+requires:
+  openstack:
+    interface: openstack-integration
+    scope: container
+    limit: 1
+  kube-control:
+    interface: kube-control
+    limit: 1
+  certificates:
+    interface: tls-certificates
+
 bases:
   - build-on:
       - name: ubuntu
         channel: "22.04"
-        architectures:
-          - amd64
+        architectures: [amd64]
     run-on:
       - name: ubuntu
         channel: "22.04"
-        architectures:
-          - amd64
-          - arm64
+        architectures: [amd64, arm64]
       - name: ubuntu
         channel: "24.04"
-        architectures:
-          - amd64
-          - arm64
+        architectures: [amd64, arm64]
 parts:
   charm:
+    source: .
+    plugin: charm
     build-packages:
-      - git
+    - git
     charm-python-packages: [setuptools, pip]
     prime:
-      - upstream/**
+    - upstream/**

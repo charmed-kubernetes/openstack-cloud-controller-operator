@@ -70,7 +70,7 @@ class ProviderCharm(ops.CharmBase):
         self.framework.observe(self.on.update_status, self._update_status)
 
         self.framework.observe(self.on.install, self._install_or_upgrade)
-        self.framework.observe(self.on.upgrade_charm, self._install_or_upgrade)
+        self.framework.observe(self.on.upgrade_charm, self._merge_config)
         self.framework.observe(self.on.config_changed, self._merge_config)
         self.framework.observe(self.on.stop, self._cleanup)
 
