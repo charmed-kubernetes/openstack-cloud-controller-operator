@@ -8,6 +8,7 @@ import pytest
 from lightkube.resources.core_v1 import Node
 
 log = logging.getLogger(__name__)
+CLOUD_CONF_OVERLAY = Path("tests/data/resources/empty.conf").resolve()
 
 
 @pytest.mark.abort_on_fail
@@ -17,18 +18,17 @@ async def test_build_and_deploy(ops_test):
         log.info("Build Charm...")
         charm = await ops_test.build_charm(".")
 
-    overlays = [
-        ops_test.Bundle("kubernetes-core", channel="edge"),
-        Path("tests/data/charm.yaml"),
-    ]
+    overlays = [Path("tests/data/charm.yaml")]
+    config = {
+        "charm": charm.resolve(),
+        "resources": {"cloud-config-overlay": CLOUD_CONF_OVERLAY},
+    }
 
-    bundle, *overlays = await ops_test.async_render_bundles(*overlays, charm=charm.resolve())
+    bundle, *overlays = await ops_test.async_render_bundles(*overlays, **config)
 
     log.info("Deploy Charm...")
     model = ops_test.model_full_name
-    cmd = f"juju deploy -m {model} {bundle} " + " ".join(
-        f"--overlay={f} --trust" for f in overlays
-    )
+    cmd = f"juju deploy -m {model} {bundle} --trust"
     rc, stdout, stderr = await ops_test.run(*shlex.split(cmd))
     assert rc == 0, f"Bundle deploy failed: {(stderr or stdout).strip()}"
 

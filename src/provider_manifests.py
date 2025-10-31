@@ -2,6 +2,7 @@
 # See LICENSE file for licensing details.
 """Implementation of cloud-controller specific details of the kubernetes manifests."""
 
+import base64
 import hashlib
 import json
 import logging
@@ -12,6 +13,8 @@ from lightkube.codecs import AnyResource, from_dict
 from ops.interface_kube_control import KubeControlRequirer
 from ops.interface_openstack_integration import OpenstackIntegrationRequirer
 from ops.manifests import Addition, ConfigRegistry, ManifestLabel, Manifests, Patch
+
+from config import CharmConfig
 
 log = logging.getLogger(__file__)
 NAMESPACE = "kube-system"
@@ -24,7 +27,7 @@ class CreateSecret(Addition):
     """Create secret for the deployment.
 
     a secret named cloud-config in the kube-system namespace
-    cloud.conf -- base64 encoded contents of cloud.conf
+    cloud.conf -- str contents of cloud.conf
     endpoint-ca.cert -- base64 encoded ca cert for the auth-url
     """
 
@@ -33,9 +36,10 @@ class CreateSecret(Addition):
     def __call__(self) -> Optional[AnyResource]:
         """Craft the secrets object for the deployment."""
         secret_config = {}
-        for k, new_k in self.CONFIG_TO_SECRET.items():
-            if value := self.manifests.config.get(k):
-                secret_config[new_k] = value
+        if data := self.manifests.config.get("cloud-conf"):
+            secret_config["cloud.conf"] = base64.b64encode(data.encode()).decode()
+        if data := self.manifests.config.get("endpoint-ca-cert"):
+            secret_config["endpoint-ca.cert"] = data
 
         log.info("Encode secret data for cloud-controller.")
         return from_dict(
@@ -90,7 +94,7 @@ class ProviderManifests(Manifests):
     def __init__(
         self,
         charm,
-        charm_config,
+        charm_config: CharmConfig,
         kube_control: KubeControlRequirer,
         integrator: OpenstackIntegrationRequirer,
     ):
@@ -112,10 +116,13 @@ class ProviderManifests(Manifests):
     @property
     def config(self) -> Dict:
         """Returns current config available from charm config and joined relations."""
+
+        cloud_conf = self.charm_config.merge_cloud_config(self.integrator.cloud_conf)
+
         config = {
             "image-registry": self.kube_control.get_registry_location(),
             "cluster-name": self.kube_control.get_cluster_tag(),
-            "cloud-conf": (val := self.integrator.cloud_conf_b64) and val.decode(),
+            "cloud-conf": cloud_conf,
             "endpoint-ca-cert": (val := self.integrator.endpoint_tls_ca) and val.decode(),
             **self.charm_config.available_data,
         }
@@ -136,7 +143,7 @@ class ProviderManifests(Manifests):
 
     def evaluate(self) -> Optional[str]:
         """Determine if manifest_config can be applied to manifests."""
-        for prop in ["cloud-conf", "cluster-name"]:
+        for prop in {"cloud-conf", "cluster-name"}:
             if not self.config.get(prop):
                 return f"Provider manifests waiting for definition of {prop}"
         return None
