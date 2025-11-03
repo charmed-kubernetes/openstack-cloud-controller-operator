@@ -7,8 +7,12 @@ import logging
 import os
 import shutil
 from pathlib import Path
+from typing import List
 
 import ops
+from lightkube import Client
+from lightkube.core.exceptions import ApiError
+from lightkube.resources.core_v1 import Node
 from ops.interface_kube_control import KubeControlRequirer
 from ops.interface_openstack_integration import OpenstackIntegrationRequirer
 from ops.interface_tls_certificates import CertificatesRequires
@@ -18,6 +22,9 @@ from config import CharmConfig
 from provider_manifests import ProviderManifests
 
 log = logging.getLogger(__name__)
+
+# Maximum number of node names to display in status messages
+MAX_NODES_IN_STATUS = 3
 
 
 class ProviderCharm(ops.CharmBase):
@@ -106,6 +113,27 @@ class ProviderCharm(ops.CharmBase):
             msg = "Failed to apply missing resources. API Server unavailable."
             event.set_results({"result": msg})
 
+    def _check_node_provider_ids(self) -> List[str]:
+        """Check nodes for missing or invalid providerIDs.
+
+        Returns:
+            List of node names that are missing or have invalid providerIDs.
+        """
+        try:
+            client = Client()
+            nodes_without_provider_id = []
+
+            for node in client.list(Node):
+                provider_id = node.spec.providerID if node.spec.providerID else ""
+                # Expected format: "openstack://region/InstanceID" or "openstack:///InstanceID"
+                if not provider_id.startswith("openstack://"):
+                    nodes_without_provider_id.append(node.metadata.name)
+
+            return nodes_without_provider_id
+        except ApiError as e:
+            log.warning(f"Failed to query nodes for providerIDs: {e}")
+            return []
+
     def _update_status(self, _):
         if not self.stored.deployed:
             return
@@ -113,10 +141,25 @@ class ProviderCharm(ops.CharmBase):
         unready = self.collector.unready
         if unready:
             self.unit.status = ops.WaitingStatus(", ".join(unready))
-        else:
-            self.unit.status = ops.ActiveStatus("Ready")
-            self.unit.set_workload_version(self.collector.short_version)
-            self.app.status = ops.ActiveStatus(self.collector.long_version)
+            return
+
+        # Check if nodes have providerIDs set (bug #2100952)
+        nodes_without_provider_id = self._check_node_provider_ids()
+        if nodes_without_provider_id:
+            node_list = ", ".join(nodes_without_provider_id[:MAX_NODES_IN_STATUS])
+            suffix = (
+                f" (+{len(nodes_without_provider_id) - MAX_NODES_IN_STATUS} more)"
+                if len(nodes_without_provider_id) > MAX_NODES_IN_STATUS
+                else ""
+            )
+            self.unit.status = ops.WaitingStatus(
+                f"Cloud provider not initialized on nodes: {node_list}{suffix}"
+            )
+            return
+
+        self.unit.status = ops.ActiveStatus("Ready")
+        self.unit.set_workload_version(self.collector.short_version)
+        self.app.status = ops.ActiveStatus(self.collector.long_version)
 
     def _kube_control(self, event):
         self.kube_control.set_auth_request(self.unit.name, "system:masters")
