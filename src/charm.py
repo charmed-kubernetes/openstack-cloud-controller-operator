@@ -131,7 +131,7 @@ class ProviderCharm(ops.CharmBase):
 
             return nodes_without_provider_id
         except ApiError as e:
-            log.warning(f"Failed to query nodes for providerIDs: {e}")
+            log.warning("Failed to query nodes for providerIDs: %s", e)
             return []
 
     def _update_status(self, _):
