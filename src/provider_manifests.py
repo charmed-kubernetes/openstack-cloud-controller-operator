@@ -70,6 +70,13 @@ class UpdateDaemonSet(Patch):
                 volume.secret.secretName = SECRET_NAME
                 log.info(f"Setting secret for {obj.kind}/{obj.metadata.name}")
 
+        msg = f"Patching node-selector for {obj.kind}/{obj.metadata.name}"
+        if selector := obj.spec.template.spec.nodeSelector:
+            selector_value = selector.get("node-role.kubernetes.io/control-plane")
+            if selector_value:
+                selector["node-role.kubernetes.io/control-plane"] = ""
+                log.info(f"{msg} node-role.kubernetes.io/control-plane='' not '{selector_value}'")
+
         cluster_name = self.manifests.config.get("cluster-name")
         msg = f"Patching cluster-name for {obj.kind}/{obj.metadata.name}"
         for container in obj.spec.template.spec.containers:
