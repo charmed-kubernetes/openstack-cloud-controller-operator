@@ -1,8 +1,9 @@
-# Copyright 2022 Canonical Ltd.
+# Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 #
 # Learn more about testing at: https://juju.is/docs/sdk/testing
 
+import base64
 import unittest.mock as mock
 from pathlib import Path
 
@@ -46,7 +47,8 @@ def integrator():
     with mock.patch("charm.OpenstackIntegrationRequirer") as mocked:
         integrator = mocked.return_value
         integrator.evaluate_relation.return_value = None
-        integrator.cloud_conf_b64 = b"abc"
+        valid_ini = "[Global]\nauth-url = https://keystone.example.com\n"
+        integrator.cloud_conf_b64 = base64.b64encode(valid_ini.encode())
         integrator.endpoint_tls_ca = b"def"
         integrator.proxy_config = {}
         yield integrator

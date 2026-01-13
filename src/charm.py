@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2022 Canonical Ltd.
+# Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 """Deploy and manage the Controller-Manager for K8s on OpenStack."""
 
@@ -72,6 +72,7 @@ class ProviderCharm(ops.CharmBase):
         self.framework.observe(self.on.install, self._install_or_upgrade)
         self.framework.observe(self.on.upgrade_charm, self._install_or_upgrade)
         self.framework.observe(self.on.config_changed, self._merge_config)
+        self.framework.observe(self.on.secret_changed, self._merge_config)
         self.framework.observe(self.on.stop, self._cleanup)
 
     @property
@@ -107,7 +108,7 @@ class ProviderCharm(ops.CharmBase):
             event.set_results({"result": msg})
 
     def _update_status(self, _):
-        if not self.stored.deployed:
+        if not self._check_config() or not self.stored.deployed:
             return
 
         unready = self.collector.unready
@@ -166,8 +167,33 @@ class ProviderCharm(ops.CharmBase):
         self._ca_cert_path.write_text(self.certificates.ca)
         return True
 
+    def _get_secret_cloud_config(self) -> str | None:
+        """Retrieve cloud-config content from the Juju secret.
+
+        Returns:
+            The cloud-config INI string from the secret, or None if not configured.
+        """
+        if not self.unit.is_leader():
+            return None
+
+        secret_id = self.config.get("cloud-config")
+        if not secret_id:
+            return None
+
+        try:
+            secret = self.model.get_secret(id=secret_id)
+            content = secret.get_content(refresh=True)
+            return content.get("cloud-config")
+        except ops.SecretNotFoundError:
+            log.warning(f"Secret {secret_id} not found or not granted to this charm.")
+            return None
+
     def _check_config(self):
         self.unit.status = ops.MaintenanceStatus("Evaluating charm config.")
+
+        secret_content = self._get_secret_cloud_config()
+        self.charm_config.set_secret_cloud_config(secret_content)
+
         evaluation = self.charm_config.evaluate()
         if evaluation:
             self.unit.status = ops.BlockedStatus(evaluation)
