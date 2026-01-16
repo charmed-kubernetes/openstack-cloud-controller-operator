@@ -48,6 +48,7 @@ def integrator():
         integrator = mocked.return_value
         integrator.evaluate_relation.return_value = None
         valid_ini = "[Global]\nauth-url = https://keystone.example.com\n"
+        integrator.cloud_conf = valid_ini
         integrator.cloud_conf_b64 = base64.b64encode(valid_ini.encode())
         integrator.endpoint_tls_ca = b"def"
         integrator.proxy_config = {}
