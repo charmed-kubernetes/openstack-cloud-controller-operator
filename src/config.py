@@ -123,8 +123,13 @@ class CharmConfig:
             try:
                 parser = configparser.ConfigParser()
                 parser.read_string(self._secret_cloud_config)
-            except configparser.Error:
-                log.exception("Invalid INI format in cloud-config secret.")
-                return "Invalid cloud-config secret. Check Juju logs for details."
+            except configparser.Error as e:
+                # Log only the exception type, not the full traceback or message,
+                # as it may contain sensitive credentials from the cloud-config.
+                log.error(
+                    "Invalid INI format in cloud-config secret: %s",
+                    type(e).__name__,
+                )
+                return "Invalid cloud-config secret format."
 
         return None

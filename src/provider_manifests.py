@@ -122,9 +122,7 @@ class ProviderManifests(Manifests):
     @property
     def config(self) -> Dict:
         """Returns current config available from charm config and joined relations."""
-        base_cloud_conf = ""
-        if raw := self.integrator.cloud_conf_b64:
-            base_cloud_conf = base64.b64decode(raw).decode()
+        base_cloud_conf = self.integrator.cloud_conf or ""
 
         merged_cloud_conf = self.charm_config.merged_cloud_conf(base_cloud_conf)
         merged_cloud_conf_b64 = base64.b64encode(merged_cloud_conf.encode()).decode()
