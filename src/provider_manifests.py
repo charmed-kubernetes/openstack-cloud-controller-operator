@@ -1,7 +1,8 @@
-# Copyright 2022 Canonical Ltd.
+# Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 """Implementation of cloud-controller specific details of the kubernetes manifests."""
 
+import base64
 import hashlib
 import json
 import logging
@@ -12,6 +13,8 @@ from lightkube.codecs import AnyResource, from_dict
 from ops.interface_kube_control import KubeControlRequirer
 from ops.interface_openstack_integration import OpenstackIntegrationRequirer
 from ops.manifests import Addition, ConfigRegistry, ManifestLabel, Manifests, Patch
+
+from config import CharmConfig
 
 log = logging.getLogger(__file__)
 NAMESPACE = "kube-system"
@@ -97,7 +100,7 @@ class ProviderManifests(Manifests):
     def __init__(
         self,
         charm,
-        charm_config,
+        charm_config: CharmConfig,
         kube_control: KubeControlRequirer,
         integrator: OpenstackIntegrationRequirer,
     ):
@@ -119,10 +122,15 @@ class ProviderManifests(Manifests):
     @property
     def config(self) -> Dict:
         """Returns current config available from charm config and joined relations."""
+        base_cloud_conf = self.integrator.cloud_conf or ""
+
+        merged_cloud_conf = self.charm_config.merged_cloud_conf(base_cloud_conf)
+        merged_cloud_conf_b64 = base64.b64encode(merged_cloud_conf.encode()).decode()
+
         config = {
             "image-registry": self.kube_control.get_registry_location(),
             "cluster-name": self.kube_control.get_cluster_tag(),
-            "cloud-conf": (val := self.integrator.cloud_conf_b64) and val.decode(),
+            "cloud-conf": merged_cloud_conf_b64,
             "endpoint-ca-cert": (val := self.integrator.endpoint_tls_ca) and val.decode(),
             **self.charm_config.available_data,
         }
