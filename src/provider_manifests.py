@@ -69,7 +69,7 @@ class UpdateDaemonSet(Patch):
         for volume in obj.spec.template.spec.volumes:
             if volume.secret:
                 volume.secret.secretName = SECRET_NAME
-        log.info("Setting secret for %s/%s", obj.kind, obj.metadata.name)
+                log.info("Setting secret for %s/%s", obj.kind, obj.metadata.name)
 
         cluster_name = self.manifests.config.get("cluster-name")
         for container in obj.spec.template.spec.containers:
