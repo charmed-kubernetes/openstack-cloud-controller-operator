@@ -54,21 +54,22 @@ class UpdateDaemonSet(Patch):
 
     def __call__(self, obj: AnyResource):
         """Patch the openstack CCM daemonset."""
-        if not (obj.kind == "DaemonSet" and obj.metadata.name == RESOURCE_NAME):
+        if obj.kind != "DaemonSet" or obj.metadata.name != RESOURCE_NAME:
             return
 
         # Rolling restart when the hash changes
-        hash_key = "juju.is/manifest-hash"
-        hash_value = str(self.manifests.hash())
-        if not (annotations := obj.spec.template.metadata.annotations):
-            annotations = obj.spec.template.metadata.annotations = {}
-        annotations[hash_key] = hash_value
+        if obj.spec.template.metadata.annotations is None:
+            obj.spec.template.metadata.annotations = {}
+
+        obj.spec.template.metadata.annotations["juju.is/manifest-hash"] = str(
+            self.manifests.hash()
+        )
         log.info("Setting hash for %s/%s", obj.kind, obj.metadata.name)
 
         for volume in obj.spec.template.spec.volumes:
             if volume.secret:
                 volume.secret.secretName = SECRET_NAME
-                log.info(f"Setting secret for {obj.kind}/{obj.metadata.name}")
+                log.info("Setting secret for %s/%s", obj.kind, obj.metadata.name)
 
         msg = f"Patching node-selector for {obj.kind}/{obj.metadata.name}"
         if selector := obj.spec.template.spec.nodeSelector:
@@ -78,17 +79,21 @@ class UpdateDaemonSet(Patch):
                 log.info(f"{msg} node-role.kubernetes.io/control-plane='' not '{selector_value}'")
 
         cluster_name = self.manifests.config.get("cluster-name")
-        msg = f"Patching cluster-name for {obj.kind}/{obj.metadata.name}"
         for container in obj.spec.template.spec.containers:
             if container.name == RESOURCE_NAME:
                 for env in container.env:
                     if env.name == "CLUSTER_NAME":
                         env.value = cluster_name
-                        log.info(f"{msg} by env")
+                        log.info(
+                            "Patching cluster-name for %s/%s by env", obj.kind, obj.metadata.name
+                        )
+                        break
 
                 enabled = self.manifests.config.get("web-proxy-enable")
-                env = charms.proxylib.environ(enabled=enabled, add_no_proxies=K8S_DEFAULT_NO_PROXY)
-                container.env.extend(charms.proxylib.container_vars(env))
+                proxy_env = charms.proxylib.environ(
+                    enabled=enabled, add_no_proxies=K8S_DEFAULT_NO_PROXY
+                )
+                container.env.extend(charms.proxylib.container_vars(proxy_env))
 
 
 class ProviderManifests(Manifests):
