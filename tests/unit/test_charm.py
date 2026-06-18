@@ -3,7 +3,6 @@
 #
 # Learn more about testing at: https://juju.is/docs/sdk/testing
 
-import shutil
 import unittest.mock as mock
 from pathlib import Path
 
@@ -277,12 +276,15 @@ def test_cleanup_removes_kubeconfig(harness):
     mock_path.parent.is_dir.return_value = True
     mock_path.parent.exists.return_value = True
 
-    with mock.patch.object(
-        ProviderCharm,
-        "_kubeconfig_path",
-        new_callable=mock.PropertyMock,
-        return_value=mock_path,
-    ), mock.patch("shutil.rmtree") as mock_rmtree:
+    with (
+        mock.patch.object(
+            ProviderCharm,
+            "_kubeconfig_path",
+            new_callable=mock.PropertyMock,
+            return_value=mock_path,
+        ),
+        mock.patch("shutil.rmtree") as mock_rmtree,
+    ):
         charm._cleanup(mock.MagicMock())
         mock_rmtree.assert_called_once_with(mock_path.parent)
 
@@ -350,12 +352,15 @@ def test_pre_teardown_resets_hash_so_cleanup_skips(harness):
     mock_path.parent.is_dir.return_value = True
     mock_path.parent.exists.return_value = True
 
-    with mock.patch.object(
-        ProviderCharm,
-        "_kubeconfig_path",
-        new_callable=mock.PropertyMock,
-        return_value=mock_path,
-    ), mock.patch("shutil.rmtree"):
+    with (
+        mock.patch.object(
+            ProviderCharm,
+            "_kubeconfig_path",
+            new_callable=mock.PropertyMock,
+            return_value=mock_path,
+        ),
+        mock.patch("shutil.rmtree"),
+    ):
         charm._cleanup(mock.MagicMock())
 
     controller.delete_manifests.assert_not_called()
