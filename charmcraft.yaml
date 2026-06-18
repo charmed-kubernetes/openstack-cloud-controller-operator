@@ -23,6 +23,8 @@ parts:
   charm:
     build-packages:
       - git
+      - libssl-dev
+      - pkg-config
     charm-python-packages: [setuptools, pip]
   upstream-manifests:
     plugin: dump

@@ -3,16 +3,19 @@
 # See LICENSE file for licensing details.
 """Deploy and manage the Controller-Manager for K8s on OpenStack."""
 
+import base64
+import json
 import logging
 import os
 import shutil
 from pathlib import Path
-from typing import List
+from typing import Dict, List, Optional
 
 import ops
 from lightkube import Client
 from lightkube.core.exceptions import ApiError
 from lightkube.resources.core_v1 import Node
+from openstack import connection as openstack_connection
 from ops.interface_kube_control import KubeControlRequirer
 from ops.interface_openstack_integration import OpenstackIntegrationRequirer
 from ops.interface_tls_certificates import CertificatesRequires
@@ -56,6 +59,7 @@ class ProviderCharm(ops.CharmBase):
         self.framework.observe(self.on.kube_control_relation_created, self._kube_control)
         self.framework.observe(self.on.kube_control_relation_joined, self._kube_control)
         self.framework.observe(self.on.kube_control_relation_changed, self._merge_config)
+        self.framework.observe(self.on.kube_control_relation_departed, self._pre_teardown)
         self.framework.observe(self.on.kube_control_relation_broken, self._merge_config)
 
         self.framework.observe(self.on.certificates_relation_created, self._merge_config)
@@ -68,6 +72,7 @@ class ProviderCharm(ops.CharmBase):
         self.framework.observe(self.on.openstack_relation_created, self._merge_config)
         self.framework.observe(self.on.openstack_relation_joined, self._merge_config)
         self.framework.observe(self.on.openstack_relation_changed, self._merge_config)
+        self.framework.observe(self.on.openstack_relation_departed, self._pre_teardown)
         self.framework.observe(self.on.openstack_relation_broken, self._merge_config)
 
         self.framework.observe(self.on.list_versions_action, self._list_versions)
@@ -91,6 +96,10 @@ class ProviderCharm(ops.CharmBase):
         os.environ["KUBECONFIG"] = path
         return Path(path)
 
+    @property
+    def _openstack_ca_cert_path(self) -> Path:
+        return Path(f"/srv/{self.unit.name}/openstack-endpoint-ca.crt")
+
     def _list_versions(self, event):
         self.collector.list_versions(event)
 
@@ -113,6 +122,119 @@ class ProviderCharm(ops.CharmBase):
             msg = "Failed to apply missing resources. API Server unavailable."
             event.set_results({"result": msg})
 
+    @staticmethod
+    def _decode_relation_value(value):
+        """Decode quoted JSON-style relation values into native Python values."""
+        if not isinstance(value, str):
+            return value
+        value = value.strip()
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+
+    def _openstack_relation_data(self) -> Dict[str, str]:
+        """Return the remote relation data for the openstack relation."""
+        relation = getattr(self.integrator, "relation", None)
+        if not relation or not relation.units:
+            return {}
+        try:
+            unit = next(iter(relation.units))
+        except StopIteration:
+            return {}
+        return dict(relation.data[unit])
+
+    def _openstack_connection(self) -> Optional[openstack_connection.Connection]:
+        """Build an OpenStack SDK connection from relation data."""
+        relation_data = self._openstack_relation_data()
+        if not relation_data:
+            log.info("OpenStack relation data is not yet available for providerID lookup.")
+            return None
+
+        decoded = {key: self._decode_relation_value(value) for key, value in relation_data.items()}
+        auth_url = decoded.get("auth_url")
+        if not auth_url:
+            log.warning("OpenStack relation data is missing auth_url; cannot resolve providerIDs.")
+            return None
+
+        conn_args = {
+            "auth_url": auth_url,
+            "region_name": decoded.get("region") or None,
+            "identity_api_version": str(decoded.get("version") or "3"),
+        }
+
+        endpoint_tls_ca = decoded.get("endpoint_tls_ca")
+        if endpoint_tls_ca:
+            self._openstack_ca_cert_path.write_bytes(base64.b64decode(endpoint_tls_ca))
+            conn_args["verify"] = str(self._openstack_ca_cert_path)
+
+        if decoded.get("application_credential_id") and decoded.get(
+            "application_credential_secret"
+        ):
+            conn_args.update(
+                {
+                    "auth_type": "v3applicationcredential",
+                    "application_credential_id": decoded["application_credential_id"],
+                    "application_credential_secret": decoded["application_credential_secret"],
+                }
+            )
+            log.info("Using OpenStack application credentials for providerID lookup.")
+        else:
+            required = {
+                "username": decoded.get("username"),
+                "password": decoded.get("password"),
+                "project_name": decoded.get("project_name"),
+                "user_domain_name": decoded.get("user_domain_name"),
+                "project_domain_name": decoded.get("project_domain_name"),
+            }
+            missing = [key for key, value in required.items() if not value]
+            if missing:
+                log.warning(
+                    "OpenStack relation data is missing %s; cannot resolve providerIDs.",
+                    ", ".join(sorted(missing)),
+                )
+                return None
+            conn_args.update(required)
+            log.info("Using OpenStack username/password credentials for providerID lookup.")
+
+        return openstack_connection.Connection(**conn_args)
+
+    @staticmethod
+    def _node_internal_ip(node: Node) -> Optional[str]:
+        """Extract the first InternalIP from a Kubernetes node."""
+        for address in getattr(node.status, "addresses", []) or []:
+            if address.type == "InternalIP" and address.address:
+                return address.address
+        return None
+
+    @staticmethod
+    def _server_ips(server) -> List[str]:
+        """Extract all IP addresses from an OpenStack server object."""
+        ips = []
+        for network in (getattr(server, "addresses", {}) or {}).values():
+            if not isinstance(network, list):
+                continue
+            for address in network:
+                if isinstance(address, dict) and address.get("addr"):
+                    ips.append(address["addr"])
+        return ips
+
+    def _servers_by_internal_ip(self) -> Dict[str, List[str]]:
+        """Map OpenStack server IPs to providerID values."""
+        conn = self._openstack_connection()
+        if not conn:
+            return {}
+
+        servers_by_ip: Dict[str, List[str]] = {}
+        for server in conn.compute.servers(details=True):
+            provider_id = f"openstack:///{server.id}"
+            for ip in self._server_ips(server):
+                servers_by_ip.setdefault(ip, []).append(provider_id)
+        log.info(
+            "Loaded %d OpenStack server IP mappings for providerID lookup.", len(servers_by_ip)
+        )
+        return servers_by_ip
+
     def _check_node_provider_ids(self) -> List[str]:
         """Check nodes for missing or invalid providerIDs.
 
@@ -122,12 +244,49 @@ class ProviderCharm(ops.CharmBase):
         try:
             client = Client()
             nodes_without_provider_id = []
+            servers_by_ip = self._servers_by_internal_ip()
 
             for node in client.list(Node):
                 provider_id = node.spec.providerID if node.spec.providerID else ""
                 # Expected format: "openstack://region/InstanceID" or "openstack:///InstanceID"
                 if not provider_id.startswith("openstack://"):
-                    nodes_without_provider_id.append(node.metadata.name)
+                    internal_ip = self._node_internal_ip(node)
+                    if not internal_ip:
+                        log.info(
+                            "Node %s has no InternalIP; cannot resolve providerID.",
+                            node.metadata.name,
+                        )
+                        nodes_without_provider_id.append(node.metadata.name)
+                        continue
+
+                    matches = servers_by_ip.get(internal_ip, [])
+                    if len(matches) > 1:
+                        log.warning(
+                            "Found multiple OpenStack matches for node %s InternalIP %s; skipping providerID patch.",
+                            node.metadata.name,
+                            internal_ip,
+                        )
+                        nodes_without_provider_id.append(node.metadata.name)
+                        continue
+                    if not matches:
+                        log.info(
+                            "No OpenStack server match found for node %s InternalIP %s.",
+                            node.metadata.name,
+                            internal_ip,
+                        )
+                        nodes_without_provider_id.append(node.metadata.name)
+                        continue
+
+                    patched_provider_id = matches[0]
+                    log.info(
+                        "Patching providerID for node %s using InternalIP %s -> %s.",
+                        node.metadata.name,
+                        internal_ip,
+                        patched_provider_id,
+                    )
+                    client.patch(
+                        Node, node.metadata.name, {"spec": {"providerID": patched_provider_id}}
+                    )
 
             return nodes_without_provider_id
         except ApiError as e:
