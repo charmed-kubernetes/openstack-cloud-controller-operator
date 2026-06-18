@@ -148,6 +148,14 @@ class ProviderManifests(Manifests):
 
     def evaluate(self) -> Optional[str]:
         """Determine if manifest_config can be applied to manifests."""
+        configured_release = self.config.get("release")
+        if configured_release and configured_release not in self.releases:
+            supported = ", ".join(self.releases)
+            return (
+                f"manager-release '{configured_release}' is not supported. "
+                f"Available releases: {supported}"
+            )
+
         for prop in ["cloud-conf", "cluster-name"]:
             if not self.config.get(prop):
                 return f"Provider manifests waiting for definition of {prop}"

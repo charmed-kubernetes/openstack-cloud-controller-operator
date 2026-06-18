@@ -25,13 +25,14 @@ options:
     type: string
     description: |
       Specify the version of controller-manager-release as defined by the `release`
-      tags of https://github.com/kubernetes/cloud-provider-openstack
-
-      example)
+      tags of https://github.com/kubernetes/cloud-provider-openstack example)
         juju config openstack-cloud-controller manager-release='v1.7.3'
 
+      The manifests for the configured version must already be present in this
+      charm source tree under upstream/controller_manager/manifests.
+      
       A list of supported versions is available through the action:
-        juju run-action openstack-cloud-controller/leader list-releases --wait
+        juju run- openstack-cloud-controller/leader list-versions --wait
 
       To reset by to the latest supported by the charm use:
         juju config openstack-cloud-controller --reset manager-release

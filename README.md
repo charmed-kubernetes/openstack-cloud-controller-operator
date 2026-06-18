@@ -11,6 +11,18 @@ The charm requires openstack credentials and connection information, which
 can be provided via the `openstack-integration` relation to the 
 [Openstack Integrator charm](https://charmhub.io/openstack-integrator).
 
+### Release Selection
+
+When setting `manager-release`, manifests for that version must already be
+present in the charm source tree under
+`upstream/controller_manager/manifests`.
+
+You can verify supported versions via:
+
+```bash
+juju run openstack-cloud-controller/leader list-versions --wait
+```
+
 
 ## Deployment
 
