@@ -3,6 +3,7 @@
 #
 # Learn more about testing at: https://juju.is/docs/sdk/testing
 
+import shutil
 import unittest.mock as mock
 from pathlib import Path
 
@@ -130,6 +131,7 @@ def test_waits_for_certificates(harness):
 @mock.patch("ops.interface_kube_control.KubeControlRequirer.create_kubeconfig")
 @pytest.mark.usefixtures("integrator", "certificates")
 def test_waits_for_kube_control(mock_create_kubeconfig, harness, caplog):
+    harness.set_leader(True)
     harness.begin_with_initial_hooks()
     charm = harness.charm
     assert isinstance(charm.unit.status, BlockedStatus)
@@ -170,3 +172,190 @@ def test_waits_for_kube_control(mock_create_kubeconfig, harness, caplog):
     }
 
     caplog.clear()
+
+
+def _mock_node(name: str, provider_id: str, internal_ip: str):
+    node = mock.MagicMock()
+    node.metadata.name = name
+    node.spec.providerID = provider_id
+    addr = mock.MagicMock()
+    addr.type = "InternalIP"
+    addr.address = internal_ip
+    node.status.addresses = [addr]
+    return node
+
+
+def test_provider_ids_are_patched_by_internal_ip(harness, lk_client_charm):
+    harness.begin()
+    charm = harness.charm
+    node = _mock_node("node-1", "", "10.0.0.11")
+    lk_client_charm.list.return_value = [node]
+
+    with mock.patch.object(
+        charm, "_servers_by_internal_ip", return_value={"10.0.0.11": ["openstack:///srv-1"]}
+    ):
+        missing = charm._check_node_provider_ids()
+
+    assert missing == []
+    lk_client_charm.patch.assert_called_once_with(
+        mock.ANY, "node-1", {"spec": {"providerID": "openstack:///srv-1"}}
+    )
+
+
+def test_provider_ids_missing_when_no_internal_ip_match(harness, lk_client_charm):
+    harness.begin()
+    charm = harness.charm
+    node = _mock_node("node-1", "", "10.0.0.11")
+    lk_client_charm.list.return_value = [node]
+
+    with mock.patch.object(charm, "_servers_by_internal_ip", return_value={}):
+        missing = charm._check_node_provider_ids()
+
+    assert missing == ["node-1"]
+    lk_client_charm.patch.assert_not_called()
+
+
+def test_provider_ids_not_patched_when_already_set(harness, lk_client_charm):
+    harness.begin()
+    charm = harness.charm
+    node = _mock_node("node-1", "openstack:///srv-1", "10.0.0.11")
+    lk_client_charm.list.return_value = [node]
+
+    with mock.patch.object(
+        charm, "_servers_by_internal_ip", return_value={"10.0.0.11": ["openstack:///srv-1"]}
+    ):
+        missing = charm._check_node_provider_ids()
+
+    assert missing == []
+    lk_client_charm.patch.assert_not_called()
+
+
+def test_install_or_upgrade_skips_apply_on_non_leader(harness):
+    harness.begin()
+    harness.set_leader(False)
+    charm = harness.charm
+    controller = mock.MagicMock()
+    charm.collector.manifests = {"provider": controller}
+    charm.stored.config_hash = None
+
+    assert charm._install_or_upgrade(mock.MagicMock(), config_hash=1) is True
+    controller.apply_manifests.assert_not_called()
+
+
+def test_install_or_upgrade_applies_on_leader(harness):
+    harness.begin()
+    harness.set_leader(True)
+    charm = harness.charm
+    controller = mock.MagicMock()
+    charm.collector.manifests = {"provider": controller}
+    charm.stored.config_hash = None
+
+    assert charm._install_or_upgrade(mock.MagicMock(), config_hash=1) is True
+    controller.apply_manifests.assert_called_once_with()
+
+
+def test_cleanup_skips_delete_on_non_leader(harness):
+    harness.begin()
+    harness.set_leader(False)
+    charm = harness.charm
+    controller = mock.MagicMock()
+    charm.collector.manifests = {"provider": controller}
+    charm.stored.config_hash = 1
+
+    charm._cleanup(mock.MagicMock())
+
+    controller.delete_manifests.assert_not_called()
+
+
+def test_cleanup_removes_kubeconfig(harness):
+    harness.begin()
+    charm = harness.charm
+
+    # Mock the kubeconfig path to avoid actual filesystem operations
+    mock_path = mock.MagicMock(spec=Path)
+    mock_path.parent = mock.MagicMock()
+    mock_path.parent.is_dir.return_value = True
+    mock_path.parent.exists.return_value = True
+
+    with mock.patch.object(
+        ProviderCharm,
+        "_kubeconfig_path",
+        new_callable=mock.PropertyMock,
+        return_value=mock_path,
+    ), mock.patch("shutil.rmtree") as mock_rmtree:
+        charm._cleanup(mock.MagicMock())
+        mock_rmtree.assert_called_once_with(mock_path.parent)
+
+
+def test_pre_teardown_skips_if_not_leader(harness):
+    harness.begin()
+    harness.set_leader(False)
+    charm = harness.charm
+    controller = mock.MagicMock()
+    charm.collector.manifests = {"provider": controller}
+    charm.stored.config_hash = 1
+
+    charm._pre_teardown(mock.MagicMock())
+
+    controller.delete_manifests.assert_not_called()
+
+
+def test_pre_teardown_skips_if_not_removal(harness):
+    harness.begin()
+    harness.set_leader(True)
+    harness.set_planned_units(1)  # Not removal (relation swap)
+    charm = harness.charm
+    controller = mock.MagicMock()
+    charm.collector.manifests = {"provider": controller}
+    charm.stored.config_hash = 1
+
+    charm._pre_teardown(mock.MagicMock())
+
+    controller.delete_manifests.assert_not_called()
+
+
+def test_pre_teardown_deletes_on_removal(harness):
+    harness.begin()
+    harness.set_leader(True)
+    harness.set_planned_units(0)  # Removal
+    charm = harness.charm
+    controller = mock.MagicMock()
+    charm.collector.manifests = {"provider": controller}
+    charm.stored.config_hash = 1
+
+    charm._pre_teardown(mock.MagicMock())
+
+    controller.delete_manifests.assert_called_once_with(ignore_unauthorized=True)
+    assert charm.stored.config_hash is None
+
+
+def test_pre_teardown_resets_hash_so_cleanup_skips(harness):
+    harness.begin()
+    harness.set_leader(True)
+    harness.set_planned_units(0)
+    charm = harness.charm
+    controller = mock.MagicMock()
+    charm.collector.manifests = {"provider": controller}
+    charm.stored.config_hash = 1
+
+    # Run pre_teardown
+    charm._pre_teardown(mock.MagicMock())
+
+    # Reset the controller for cleanup
+    controller.reset_mock()
+
+    # Mock the kubeconfig path to avoid actual filesystem operations
+    mock_path = mock.MagicMock(spec=Path)
+    mock_path.parent = mock.MagicMock()
+    mock_path.parent.is_dir.return_value = True
+    mock_path.parent.exists.return_value = True
+
+    with mock.patch.object(
+        ProviderCharm,
+        "_kubeconfig_path",
+        new_callable=mock.PropertyMock,
+        return_value=mock_path,
+    ), mock.patch("shutil.rmtree"):
+        charm._cleanup(mock.MagicMock())
+
+    controller.delete_manifests.assert_not_called()
