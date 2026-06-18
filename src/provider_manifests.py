@@ -124,9 +124,10 @@ class ProviderManifests(Manifests):
     @property
     def config(self) -> Dict:
         """Returns current config available from charm config and joined relations."""
+        cluster_name = self.charm_config.available_data.get("cluster-name") or self.kube_control.get_cluster_tag()
         config = {
             "image-registry": self.kube_control.get_registry_location(),
-            "cluster-name": self.kube_control.get_cluster_tag(),
+            "cluster-name": cluster_name,
             "cloud-conf": (val := self.integrator.cloud_conf_b64) and val.decode(),
             "endpoint-ca-cert": (val := self.integrator.endpoint_tls_ca) and val.decode(),
             **self.charm_config.available_data,

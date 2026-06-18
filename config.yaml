@@ -1,4 +1,12 @@
 options:
+  cluster-name:
+    type: string
+    default: ""
+    description: |
+      Override the cluster name passed to openstack-cloud-controller-manager.
+
+      If unset, the charm uses the kube-control relation cluster tag.
+
   image-registry:
     type: string
     description: |
