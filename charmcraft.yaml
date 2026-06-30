@@ -25,6 +25,7 @@ parts:
       - git
       - libssl-dev
       - pkg-config
+      - libffi-dev
     charm-python-packages: [setuptools, pip]
   upstream-manifests:
     plugin: dump
