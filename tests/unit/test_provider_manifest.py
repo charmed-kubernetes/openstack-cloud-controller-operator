@@ -122,3 +122,20 @@ def test_patch_daemon_set(provider, respect_proxy, no_proxy):
         assert "http_proxy" not in keys
         assert "https_proxy" not in keys
         assert "no_proxy" not in keys
+
+
+def test_evaluate_rejects_unsupported_manager_release(provider, charm_config):
+    """Ensure evaluate blocks when configured manager-release is not present locally."""
+    charm_config.available_data["manager-release"] = "v999.999.999"
+
+    msg = provider.evaluate()
+
+    assert msg is not None
+    assert "manager-release 'v999.999.999' is not supported" in msg
+
+
+def test_evaluate_accepts_supported_manager_release(provider, charm_config):
+    """Ensure evaluate passes when configured manager-release exists locally."""
+    charm_config.available_data["manager-release"] = provider.releases[0]
+
+    assert provider.evaluate() is None
