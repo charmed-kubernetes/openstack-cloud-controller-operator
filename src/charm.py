@@ -9,6 +9,7 @@ import shutil
 from pathlib import Path
 from typing import List
 
+import httpx
 import ops
 from lightkube import Client
 from lightkube.core.exceptions import ApiError
@@ -144,7 +145,12 @@ class ProviderCharm(ops.CharmBase):
             return
 
         # Check if nodes have providerIDs set (bug #2100952)
-        nodes_without_provider_id = self._check_node_provider_ids()
+        try:
+            nodes_without_provider_id = self._check_node_provider_ids()
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            log.warning("Kubernetes API unreachable while checking provider IDs: %s", e)
+            self.unit.status = ops.WaitingStatus("Waiting for kube-apiserver")
+            return
         if nodes_without_provider_id:
             node_list = ", ".join(nodes_without_provider_id[:MAX_NODES_IN_STATUS])
             suffix = (

@@ -6,9 +6,10 @@
 import unittest.mock as mock
 from pathlib import Path
 
+import httpx
 import pytest
 import yaml
-from ops.model import BlockedStatus, MaintenanceStatus, WaitingStatus
+from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.testing import Harness
 
 from charm import ProviderCharm
@@ -170,3 +171,63 @@ def test_waits_for_kube_control(mock_create_kubeconfig, harness, caplog):
     }
 
     caplog.clear()
+
+
+def _node(name, provider_id):
+    node = mock.MagicMock()
+    node.metadata.name = name
+    node.spec.providerID = provider_id
+    return node
+
+
+@pytest.fixture()
+def deployed_charm(harness):
+    harness.set_leader(True)
+    harness.begin()
+    charm = harness.charm
+    charm.stored.deployed = True
+    charm.collector = mock.MagicMock()
+    charm.collector.unready = []
+    return charm
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        httpx.ConnectError("No route to host"),
+        httpx.ConnectTimeout("timed out"),
+        httpx.TimeoutException("timed out"),
+    ],
+)
+def test_update_status_waits_when_api_unreachable(deployed_charm, lk_client_charm, error, caplog):
+    """Transient K8s API unavailability must not crash the update-status hook (issue #955)."""
+    lk_client_charm.list.side_effect = error
+
+    deployed_charm._update_status(None)
+
+    assert isinstance(deployed_charm.unit.status, WaitingStatus)
+    assert deployed_charm.unit.status.message == "Waiting for kube-apiserver"
+    assert any("Kubernetes API unreachable" in r.message for r in caplog.records)
+
+
+def test_update_status_reports_nodes_missing_provider_id(deployed_charm, lk_client_charm):
+    lk_client_charm.list.return_value = [
+        _node("node-1", ""),
+        _node("node-2", "openstack:///abc"),
+    ]
+
+    deployed_charm._update_status(None)
+
+    assert isinstance(deployed_charm.unit.status, WaitingStatus)
+    assert deployed_charm.unit.status.message == "Cloud provider not initialized on nodes: node-1"
+
+
+def test_update_status_active_when_provider_ids_present(deployed_charm, lk_client_charm):
+    lk_client_charm.list.return_value = [_node("node-1", "openstack:///abc")]
+    deployed_charm.collector.short_version = "1.0"
+    deployed_charm.collector.long_version = "cloud-controller 1.0"
+
+    deployed_charm._update_status(None)
+
+    assert isinstance(deployed_charm.unit.status, ActiveStatus)
+    assert deployed_charm.unit.status.message == "Ready"
