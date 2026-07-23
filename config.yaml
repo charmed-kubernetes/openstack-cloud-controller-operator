@@ -10,7 +10,7 @@ options:
       If unset, the manifests will use the image registry from the kube-control relation
 
       example)
-        juju config openstack-cloud-controller image-registry='rocks.canonical.com:443/cdk'
+        juju config openstack-cloud-controller image-registry='ghcr.io/canonical/cdk'
         juju config openstack-cloud-controller --reset image-registry
 
   web-proxy-enable:
