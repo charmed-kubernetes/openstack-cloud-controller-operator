@@ -9,12 +9,12 @@ files should not be modified locally.
 To update these, simply run the update script
 
 ```bash
-tox -e update -- --registry ${upload-registry} ${namespacing-path} ${user} ~/.upload-password
+tox -e update -- --registry ${registry} --user_pass ${user}:${password}
 ```
 This will overwrite the existing manifests for the supported components
 This will also synchronize the images to a provided oci-registry
 
-example) uploading to rocks
+example) uploading to GHCR
     ```
-    --registry upload.rocks.canonical.com:5000 staging/cdk admin ~/.upload-password
+    --registry ghcr.io/canonical/cdk
     ```
