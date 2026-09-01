@@ -1,8 +1,9 @@
-# Copyright 2025 Canonical Ltd.
+# Copyright 2026 Canonical Ltd.
 # See LICENSE file for licensing details.
 #
 # Learn more about testing at: https://juju.is/docs/sdk/testing
 
+import base64
 import os
 import unittest.mock as mock
 
@@ -43,6 +44,7 @@ def charm_config(respect_proxy, no_proxy):
         "endpoint-ca-cert": "def",
         "web-proxy-enable": respect_proxy,
     }
+    config.merged_cloud_conf.return_value = "[Global]\nauth-url = https://keystone.example.com\n"
     env = {
         "JUJU_CHARM_HTTP_PROXY": PROXY_URL_1,
         "JUJU_CHARM_HTTPS_PROXY": PROXY_URL_2,
@@ -68,7 +70,8 @@ def integrator():
     """Return the openstack integration mock."""
     integrator = mock.MagicMock(spec=OpenstackIntegrationRequirer)
     integrator.evaluate_relation.return_value = None
-    integrator.cloud_conf_b64 = b"abc"
+    valid_ini = "[Global]\nauth-url = https://keystone.example.com\n"
+    integrator.cloud_conf_b64 = base64.b64encode(valid_ini.encode())
     integrator.endpoint_tls_ca = b"def"
     return integrator
 
