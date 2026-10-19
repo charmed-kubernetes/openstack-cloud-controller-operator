@@ -38,3 +38,22 @@ options:
 
       The current release deployed is available by viewing
         juju status openstack-cloud-controller
+
+  cloud-config:
+    type: secret
+    description: |
+      Secret URI for custom cloud-config.
+
+      Users can provide additional cloud-config values via a Juju secret.
+      The secret must contain a 'cloud-config' key with INI-formatted content.
+
+      example)
+        juju add-secret ccm-config cloud-config#file=/path/to/cloud-config.ini
+        juju grant-secret ccm-config openstack-cloud-controller
+        juju config openstack-cloud-controller cloud-config=secret:d5jaau0oknku336fek70
+
+  load-balancer_member-subnet-id:
+    type: string
+    description: |
+      UUID of the subnet for load balancer members. Used when member subnet
+      differs from VIP subnet.
