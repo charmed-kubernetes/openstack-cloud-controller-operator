@@ -9,6 +9,7 @@ from pathlib import Path
 import httpx
 import pytest
 import yaml
+from ops.manifests import ManifestClientError
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.testing import Harness
 
@@ -191,14 +192,25 @@ def deployed_charm(harness):
     return charm
 
 
-@pytest.mark.parametrize(
-    "error",
-    [
-        httpx.ConnectError("No route to host"),
-        httpx.ConnectTimeout("timed out"),
-        httpx.TimeoutException("timed out"),
-    ],
-)
+def bad_gateway() -> httpx.HTTPStatusError:
+    """Non-JSON 502 from the API load balancer, which lightkube raises unwrapped."""
+    request = httpx.Request("GET", "https://10.0.0.1:6443/api/v1/nodes")
+    response = httpx.Response(502, request=request, headers={"Content-Type": "text/html"})
+    return httpx.HTTPStatusError(
+        "Server error '502 Bad Gateway'", request=request, response=response
+    )
+
+
+API_ERRORS = [
+    pytest.param(httpx.ConnectError("No route to host"), id="connect error"),
+    pytest.param(httpx.ConnectTimeout("timed out"), id="connect timeout"),
+    pytest.param(httpx.TimeoutException("timed out"), id="timeout"),
+    pytest.param(httpx.ReadError("connection reset"), id="read error"),
+    pytest.param(bad_gateway(), id="502 from load balancer"),
+]
+
+
+@pytest.mark.parametrize("error", API_ERRORS)
 def test_update_status_waits_when_api_unreachable(deployed_charm, lk_client_charm, error, caplog):
     """Transient K8s API unavailability must not crash the update-status hook (issue #955)."""
     lk_client_charm.list.side_effect = error
@@ -207,6 +219,28 @@ def test_update_status_waits_when_api_unreachable(deployed_charm, lk_client_char
 
     assert isinstance(deployed_charm.unit.status, WaitingStatus)
     assert deployed_charm.unit.status.message == "Waiting for kube-apiserver"
+    assert any("Kubernetes API unreachable" in r.message for r in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(
+            ManifestClientError(
+                "Failed to load in cluster CRDs", httpx.ConnectError("No route to host")
+            ),
+            id="manifest client error",
+        ),
+        *API_ERRORS,
+    ],
+)
+def test_update_status_waits_when_readiness_check_cannot_reach_api(deployed_charm, error, caplog):
+    """The readiness check must not leave the unit in a sticky hook error."""
+    type(deployed_charm.collector).unready = mock.PropertyMock(side_effect=error)
+
+    deployed_charm._update_status(None)
+
+    assert deployed_charm.unit.status == WaitingStatus("Waiting for kube-apiserver")
     assert any("Kubernetes API unreachable" in r.message for r in caplog.records)
 
 

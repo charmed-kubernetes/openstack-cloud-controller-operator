@@ -27,6 +27,11 @@ log = logging.getLogger(__name__)
 # Maximum number of node names to display in status messages
 MAX_NODES_IN_STATUS = 3
 
+# Kubernetes API failures surface as ManifestClientError (wrapped by ops.manifests) or as
+# raw httpx errors: connect errors, timeouts, and non-JSON responses such as a 502 from
+# the API load balancer, which lightkube does not convert to ApiError.
+KUBE_API_ERRORS = (ManifestClientError, httpx.HTTPError)
+
 
 class ProviderCharm(ops.CharmBase):
     """Deploy and manage the Cloud Controller Manager for K8s on OpenStack."""
@@ -139,7 +144,12 @@ class ProviderCharm(ops.CharmBase):
         if not self.stored.deployed:
             return
 
-        unready = self.collector.unready
+        try:
+            unready = self.collector.unready
+        except KUBE_API_ERRORS as e:
+            log.warning("Kubernetes API unreachable while checking resource readiness: %s", e)
+            self.unit.status = ops.WaitingStatus("Waiting for kube-apiserver")
+            return
         if unready:
             self.unit.status = ops.WaitingStatus(", ".join(unready))
             return
@@ -147,7 +157,7 @@ class ProviderCharm(ops.CharmBase):
         # Check if nodes have providerIDs set (bug #2100952)
         try:
             nodes_without_provider_id = self._check_node_provider_ids()
-        except (httpx.ConnectError, httpx.TimeoutException) as e:
+        except KUBE_API_ERRORS as e:
             log.warning("Kubernetes API unreachable while checking provider IDs: %s", e)
             self.unit.status = ops.WaitingStatus("Waiting for kube-apiserver")
             return
