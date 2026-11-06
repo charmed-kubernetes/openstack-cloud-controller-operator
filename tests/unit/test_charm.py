@@ -3,6 +3,8 @@
 #
 # Learn more about testing at: https://juju.is/docs/sdk/testing
 
+import contextlib
+import functools
 import unittest.mock as mock
 from pathlib import Path
 
@@ -231,3 +233,39 @@ def test_update_status_active_when_provider_ids_present(deployed_charm, lk_clien
 
     assert isinstance(deployed_charm.unit.status, ActiveStatus)
     assert deployed_charm.unit.status.message == "Ready"
+
+
+@pytest.mark.usefixtures("integrator", "certificates")
+def test_kubeconfig_refreshed_when_control_plane_unit_departs(harness, mock_ca_cert):
+    """The kubeconfig must follow the relation data when a publishing unit leaves."""
+    harness.begin_with_initial_hooks()
+    charm = harness.charm
+    mock_ca_cert.write_text("ca")
+    rel_cls = type(charm.kube_control)
+    data = yaml.safe_load(Path("tests/data/kube_control_data.yaml").read_text())
+    data["creds"] = data["creds"].replace("openstack-cloud-controller/0", charm.unit.name)
+
+    with contextlib.ExitStack() as stack:
+        for attr in ("relation", "_data"):
+            # cached_property would pin the first hook's relation data
+            if isinstance(cached := rel_cls.__dict__[attr], functools.cached_property):
+                stack.enter_context(mock.patch.object(rel_cls, attr, new=property(cached.func)))
+        rel_id = harness.add_relation("kube-control", "kubernetes-control-plane")
+        for unit, ip in (("0", "192.168.2.110"), ("1", "192.168.2.51")):
+            name = f"kubernetes-control-plane/{unit}"
+            harness.add_relation_unit(rel_id, name)
+            unit_data = {**data, "api-endpoints": f'["https://{ip}:6443"]'}
+            harness.update_relation_data(rel_id, name, unit_data)
+
+        def server():
+            config = yaml.safe_load(charm._kubeconfig_path.read_text())
+            return config["clusters"][0]["cluster"]["server"]
+
+        # Unit data is merged in arbitrary order; remove whichever unit is currently used.
+        stale = server()
+        ips = {"0": "192.168.2.110", "1": "192.168.2.51"}
+        leaving = next(u for u, ip in ips.items() if f"https://{ip}:6443" == stale)
+        remaining = next(ip for u, ip in ips.items() if u != leaving)
+
+        harness.remove_relation_unit(rel_id, f"kubernetes-control-plane/{leaving}")
+        assert server() == f"https://{remaining}:6443"
