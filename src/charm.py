@@ -57,6 +57,7 @@ class ProviderCharm(ops.CharmBase):
         self.framework.observe(self.on.kube_control_relation_created, self._kube_control)
         self.framework.observe(self.on.kube_control_relation_joined, self._kube_control)
         self.framework.observe(self.on.kube_control_relation_changed, self._merge_config)
+        self.framework.observe(self.on.kube_control_relation_departed, self._merge_config)
         self.framework.observe(self.on.kube_control_relation_broken, self._merge_config)
 
         self.framework.observe(self.on.certificates_relation_created, self._merge_config)
