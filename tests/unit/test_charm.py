@@ -70,6 +70,7 @@ def kube_control():
         kube_control = mocked.return_value
         kube_control.evaluate_relation.return_value = None
         kube_control.get_registry_location.return_value = "ghcr.io/canonical/cdk"
+        kube_control.get_cluster_tag.return_value = "k8s-cluster"
         kube_control.get_controller_taints.return_value = []
         kube_control.get_controller_labels.return_value = []
         kube_control.relation.app.name = "kubernetes-control-plane"
@@ -269,3 +270,81 @@ def test_kubeconfig_refreshed_when_control_plane_unit_departs(harness, mock_ca_c
 
         harness.remove_relation_unit(rel_id, f"kubernetes-control-plane/{leaving}")
         assert server() == f"https://{remaining}:6443"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        httpx.ConnectError("No route to host"),
+        httpx.TimeoutException("timed out"),
+        httpx.ReadError("connection reset"),
+    ],
+)
+@pytest.mark.usefixtures("integrator", "certificates", "kube_control")
+def test_cleanup_waits_when_api_unreachable(harness, lk_client, error):
+    """Transient K8s API unavailability during cleanup must defer and set WaitingStatus."""
+    harness.begin()
+    charm = harness.charm
+    charm.stored.config_hash = 123
+    lk_client.list.side_effect = error
+    event = mock.MagicMock()
+
+    charm._cleanup(event)
+
+    assert charm.unit.status == WaitingStatus("Waiting for kube-apiserver")
+    event.defer.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        httpx.ConnectError("No route to host"),
+        httpx.TimeoutException("timed out"),
+    ],
+)
+@pytest.mark.usefixtures("integrator", "certificates", "kube_control")
+def test_install_waits_when_api_unreachable(harness, lk_client, error):
+    harness.begin()
+    charm = harness.charm
+    lk_client.apply.side_effect = error
+    event = mock.MagicMock()
+
+    assert charm._install_or_upgrade(event, config_hash=123) is False
+    assert charm.unit.status == WaitingStatus("Waiting for kube-apiserver")
+    event.defer.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "method,prefix",
+    [
+        ("_list_resources", "Failed to list resources"),
+        ("_scrub_resources", "Failed to scrub resources"),
+    ],
+)
+@pytest.mark.usefixtures("integrator", "certificates", "kube_control")
+def test_resource_actions_fail_gracefully_when_api_unreachable(harness, lk_client, method, prefix):
+    harness.begin()
+    charm = harness.charm
+    lk_client.list.side_effect = httpx.ConnectError("No route to host")
+    event = mock.MagicMock()
+    event.params = {}
+
+    getattr(charm, method)(event)
+
+    event.fail.assert_called_once()
+    assert event.fail.call_args[0][0].startswith(f"{prefix}: ")
+
+
+@pytest.mark.usefixtures("integrator", "certificates", "kube_control")
+def test_sync_resources_handles_httpx_error(harness, lk_client):
+    harness.begin()
+    charm = harness.charm
+    lk_client.list.side_effect = httpx.ConnectError("No route to host")
+    event = mock.MagicMock()
+    event.params = {}
+
+    charm._sync_resources(event)
+
+    event.set_results.assert_called_once_with(
+        {"result": "Failed to apply missing resources. API Server unavailable."}
+    )
