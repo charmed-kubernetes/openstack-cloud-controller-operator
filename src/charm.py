@@ -99,19 +99,29 @@ class ProviderCharm(ops.CharmBase):
     def _list_resources(self, event):
         manifests = event.params.get("controller", "")
         resources = event.params.get("resources", "")
-        return self.collector.list_resources(event, manifests, resources)
+        try:
+            return self.collector.list_resources(event, manifests, resources)
+        except (ManifestClientError, httpx.HTTPError) as e:
+            msg = f"Failed to list resources: {e}"
+            log.warning(msg)
+            event.fail(msg)
 
     def _scrub_resources(self, event):
         manifests = event.params.get("controller", "")
         resources = event.params.get("resources", "")
-        return self.collector.scrub_resources(event, manifests, resources)
+        try:
+            return self.collector.scrub_resources(event, manifests, resources)
+        except (ManifestClientError, httpx.HTTPError) as e:
+            msg = f"Failed to scrub resources: {e}"
+            log.warning(msg)
+            event.fail(msg)
 
     def _sync_resources(self, event):
         manifests = event.params.get("controller", "")
         resources = event.params.get("resources", "")
         try:
             self.collector.apply_missing_resources(event, manifests, resources)
-        except ManifestClientError:
+        except (ManifestClientError, httpx.HTTPError):
             msg = "Failed to apply missing resources. API Server unavailable."
             event.set_results({"result": msg})
 
@@ -148,7 +158,7 @@ class ProviderCharm(ops.CharmBase):
         # Check if nodes have providerIDs set (bug #2100952)
         try:
             nodes_without_provider_id = self._check_node_provider_ids()
-        except (httpx.ConnectError, httpx.TimeoutException) as e:
+        except httpx.HTTPError as e:
             log.warning("Kubernetes API unreachable while checking provider IDs: %s", e)
             self.unit.status = ops.WaitingStatus("Waiting for kube-apiserver")
             return
@@ -261,7 +271,7 @@ class ProviderCharm(ops.CharmBase):
         for controller in self.collector.manifests.values():
             try:
                 controller.apply_manifests()
-            except ManifestClientError as e:
+            except (ManifestClientError, httpx.HTTPError) as e:
                 self.unit.status = ops.WaitingStatus("Waiting for kube-apiserver")
                 log.warning(f"Encountered installation error: {e}")
                 event.defer()
@@ -274,7 +284,7 @@ class ProviderCharm(ops.CharmBase):
             for controller in self.collector.manifests.values():
                 try:
                     controller.delete_manifests(ignore_unauthorized=True)
-                except ManifestClientError:
+                except (ManifestClientError, httpx.HTTPError):
                     self.unit.status = ops.WaitingStatus("Waiting for kube-apiserver")
                     event.defer()
                     return
