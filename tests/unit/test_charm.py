@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 import pytest
 import yaml
+from ops.manifests import Manifests
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus, WaitingStatus
 from ops.testing import Harness
 
@@ -346,3 +347,27 @@ def test_sync_resources_handles_httpx_error(harness, lk_client):
     event.set_results.assert_called_once_with(
         {"result": "Failed to apply missing resources. API Server unavailable."}
     )
+
+
+@pytest.mark.usefixtures("integrator", "certificates", "kube_control")
+def test_refresh_applies_new_default_release(harness):
+    """A refresh that only changes the default release must re-apply the manifests."""
+    harness.set_leader(True)
+    # Deployed by a previous revision, with manager-release resolving to nothing.
+    harness.update_config({"manager-release": ""})
+    harness.begin_with_initial_hooks()
+    charm = harness.charm
+    assert charm.stored.deployed
+    previous_hash = charm.stored.config_hash
+
+    default = Path("upstream/controller_manager/version").read_text().strip()
+    with mock.patch.object(Manifests, "apply_manifests", autospec=True) as apply_manifests:
+        with harness.hooks_disabled():
+            harness.update_config(unset=["manager-release"])
+        assert charm.config["manager-release"] == default
+        charm.on.config_changed.emit()
+
+    assert charm.stored.deployed
+    assert charm.stored.config_hash != previous_hash
+    applied = {call.args[0].current_release for call in apply_manifests.call_args_list}
+    assert applied == {default}
