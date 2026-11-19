@@ -101,9 +101,12 @@ def test_patch_daemon_set(provider, respect_proxy, no_proxy):
     container.name = ds.metadata.name = "openstack-cloud-controller-manager"
     ds.spec.template.spec.volumes = [secret_volume]
     ds.spec.template.spec.containers = [container]
+    node_selector = {"node-role.kubernetes.io/control-plane": "true"}
+    ds.spec.template.spec.nodeSelector = node_selector
 
     update_ds(ds)
     assert secret_volume.secret.secretName == "cloud-controller-config"
+    assert node_selector == {"node-role.kubernetes.io/control-plane": ""}
     assert EnvVar(name="CLUSTER_NAME", value=CLUSTER_NAME) in container.env
     if respect_proxy:
         split_no_proxy = no_proxy.split(",") if no_proxy else []
