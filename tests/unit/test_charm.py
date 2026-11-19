@@ -346,4 +346,3 @@ def test_sync_resources_handles_httpx_error(harness, lk_client):
     event.set_results.assert_called_once_with(
         {"result": "Failed to apply missing resources. API Server unavailable."}
     )
-
