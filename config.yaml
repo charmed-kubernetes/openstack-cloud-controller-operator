@@ -33,9 +33,8 @@ options:
       A list of supported versions is available through the action:
         juju run-action openstack-cloud-controller/leader list-releases --wait
 
-      To reset to the default release of the charm use:
+      To reset by to the latest supported by the charm use:
         juju config openstack-cloud-controller --reset manager-release
 
       The current release deployed is available by viewing
         juju status openstack-cloud-controller
-    default: "v1.36.0"
